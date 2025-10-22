@@ -1,0 +1,2231 @@
+Resumen rápido de lo que hay que entregar
+
+TransitSoftDBManager: implementar DBManager para MySQL (cadena de conexión desde archivo).
+
+TransitSoftPersistencia: implementar CapturaDAO (listarCapturas y actualizar estado).
+
+TransitSoftNegocio: implementar CapturaBOImpl con método obtenerCapturasConExcesoDeVelocidad que use el patrón Strategy (estrategias EstrategiaViaRegular y EstrategiaViaRapida) y método actualizar para marcar PROCESADO.
+
+Usar listarCapturas (proc. almacenado) o SQL para leer capturas.
+
+Entregar un main / clase de prueba que ejecute el flujo: obtener capturas, evaluar con estrategias, mostrar y actualizar.
+
+Además: segunda parte — programa que consulta vehículos en MySQL + MSSQL y combina resultados, con contraseñas encriptadas en archivo externo.
+
+Parte A — Procesamiento de capturas (exceso de velocidad)
+Estructura de paquetes sugerida
+transitsoft/
+ ├─ TransitSoftDBManager (módulo)
+ │    └─ com.transitsoft.db
+ │         └─ DBManager.java
+ ├─ TransitSoftModelo (entidades, ya implementado)
+ │    └─ com.transitsoft.modelo (Captura, Camara, Infraccion, etc.)
+ ├─ TransitSoftPersistencia
+ │    └─ com.transitsoft.persistencia.dao
+ │         ├─ CapturaDAO.java   (interface)
+ │         └─ CapturaDAOImpl.java
+ ├─ TransitSoftNegocio
+ │    └─ com.transitsoft.negocio
+ │         ├─ CapturaBO.java (interface)
+ │         └─ CapturaBOImpl.java
+ │    └─ com.transitsoft.negocio.strategy
+ │         ├─ EstrategiaVelocidad.java (interface)
+ │         ├─ EstrategiaViaRegular.java
+ │         └─ EstrategiaViaRapida.java
+ └─ TransitSoftVigilanciaVial (aplicación / main / tests)
+
+1) DBManager (TransitSoftDBManager)
+
+Objetivo: proveer Connection getConnection() reutilizable.
+
+Leer parámetros desde application.properties (o config.properties) en el módulo.
+
+Ejemplo minimal (usando DriverManager):
+
+// com.transitsoft.db.DBManager.java
+package com.transitsoft.db;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.util.Properties;
+import java.io.InputStream;
+
+public class DBManager {
+    private String url, user, password;
+    private static DBManager instance;
+
+    private DBManager() {
+        try (InputStream is = getClass().getResourceAsStream("/db.properties")) {
+            Properties p = new Properties();
+            p.load(is);
+            String host = p.getProperty("db.host");
+            String port = p.getProperty("db.port");
+            String db = p.getProperty("db.name");
+            this.user = p.getProperty("db.user");
+            String encrypted = p.getProperty("db.password");
+            this.password = CryptoUtils.decrypt(encrypted); // ver abajo
+            this.url = "jdbc:mysql://" + host + ":" + port + "/" + db + "?useSSL=false&serverTimezone=UTC";
+        } catch (Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    public static synchronized DBManager getInstance() {
+        if (instance == null) instance = new DBManager();
+        return instance;
+    }
+
+    public Connection getConnection() throws Exception {
+        return DriverManager.getConnection(url, user, password);
+    }
+}
+
+
+db.properties en resources (no subir plaintext passwords):
+
+db.host=labs-2025-2-prog3-mysql.cuz6a6q0ybnm.us-east-1.rds.amazonaws.com
+db.port=3306
+db.name=transitsoft
+db.user=admin
+db.password=<BASE64_ENCRYPTED_STRING>
+
+
+CryptoUtils.decrypt(...) es una utilidad simple que descifra Base64 Unicode si así lo usan en la materia (o implementa AES si te piden). Ejemplo (Base64 Unicode):
+
+public class CryptoUtils {
+    public static String decrypt(String base64) {
+        byte[] bytes = java.util.Base64.getDecoder().decode(base64);
+        return new String(bytes, java.nio.charset.StandardCharsets.UTF_16);
+    }
+}
+
+
+Ajusta la codificación según cómo fue encriptada la contraseña del examen.
+
+2) CapturaDAO (TransitSoftPersistencia)
+Interface:
+package com.transitsoft.persistencia.dao;
+
+import com.transitsoft.modelo.Captura;
+import java.util.List;
+
+public interface CapturaDAO {
+    List<Captura> listarCapturas() throws Exception;
+    boolean actualizarEstado(int capturaId, String nuevoEstado) throws Exception;
+}
+
+Implementación (usar procedimiento listarCapturas o SQL):
+package com.transitsoft.persistencia.dao.impl;
+
+import com.transitsoft.persistencia.dao.CapturaDAO;
+import com.transitsoft.db.DBManager;
+import com.transitsoft.modelo.Captura;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class CapturaDAOImpl implements CapturaDAO {
+    @Override
+    public List<Captura> listarCapturas() throws Exception {
+        List<Captura> lista = new ArrayList<>();
+        String sql = "{ call listarCapturas() }"; // si existe el SP
+        try (Connection c = DBManager.getInstance().getConnection();
+             CallableStatement cs = c.prepareCall(sql);
+             ResultSet rs = cs.executeQuery()) {
+            while (rs.next()) {
+                Captura cap = new Captura();
+                cap.setId(rs.getInt("id"));
+                cap.setPlaca(rs.getString("placa"));
+                cap.setVelocidad(rs.getDouble("velocidad"));
+                cap.setFechaCaptura(rs.getTimestamp("fecha_captura").toLocalDateTime());
+                // construir camara con codigo_serie, etc.
+                // cap.setCamara(...);
+                cap.setEstado(rs.getString("estado"));
+                lista.add(cap);
+            }
+        }
+        return lista;
+    }
+
+    @Override
+    public boolean actualizarEstado(int capturaId, String nuevoEstado) throws Exception {
+        String sql = "UPDATE captura SET estado = ? WHERE id = ?";
+        try (Connection c = DBManager.getInstance().getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, nuevoEstado);
+            ps.setInt(2, capturaId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+}
+
+
+Si usas procedimiento para actualización, usa CallableStatement.
+
+3) Patrón Strategy para determinar infracción por velocidad
+Interfaz de estrategia:
+package com.transitsoft.negocio.strategy;
+
+import com.transitsoft.modelo.Captura;
+
+public interface EstrategiaVelocidad {
+    boolean evaluaInfraccion(Captura captura);
+}
+
+Estrategias concretas:
+// Via regular: limite 50 km/h
+public class EstrategiaViaRegular implements EstrategiaVelocidad {
+    private final double limite = 50.0;
+    @Override
+    public boolean evaluaInfraccion(Captura c) {
+        return c.getVelocidad() > limite;
+    }
+}
+
+// Via rapida: limite 80 km/h
+public class EstrategiaViaRapida implements EstrategiaVelocidad {
+    private final double limite = 80.0;
+    @Override
+    public boolean evaluaInfraccion(Captura c) {
+        return c.getVelocidad() > limite;
+    }
+}
+
+Cómo seleccionar estrategia
+
+Inspecciona captura.getCamara().getCodigoSerie(): si CAM-LIM-002 → ViaRapida, else ViaRegular.
+
+Puedes usar una fábrica simple:
+
+public class EstrategiaFactory {
+    public static EstrategiaVelocidad getEstrategia(Captura c) {
+        String cod = c.getCamara().getCodigoSerie();
+        if ("CAM-LIM-002".equals(cod)) return new EstrategiaViaRapida();
+        return new EstrategiaViaRegular();
+    }
+}
+
+4) CapturaBOImpl (Business)
+package com.transitsoft.negocio;
+
+import com.transitsoft.persistencia.dao.CapturaDAO;
+import com.transitsoft.persistencia.dao.impl.CapturaDAOImpl;
+import com.transitsoft.negocio.strategy.*;
+import com.transitsoft.modelo.Captura;
+import java.util.*;
+
+public class CapturaBOImpl implements CapturaBO {
+    private CapturaDAO capturaDAO = new CapturaDAOImpl();
+
+    @Override
+    public List<Captura> obtenerCapturasConExcesoDeVelocidad() throws Exception {
+        List<Captura> todas = capturaDAO.listarCapturas();
+        List<Captura> infracciones = new ArrayList<>();
+        for (Captura c : todas) {
+            EstrategiaVelocidad est = EstrategiaFactory.getEstrategia(c);
+            if (est.evaluaInfraccion(c)) {
+                infracciones.add(c);
+            }
+        }
+        return infracciones;
+    }
+
+    @Override
+    public boolean actualizar(Captura captura) throws Exception {
+        return capturaDAO.actualizarEstado(captura.getId(), "PROCESADO");
+    }
+}
+
+
+CapturaBO interface declara los métodos.
+
+5) Flujo en el main o clase de vigilia
+public class AppProcesador {
+    public static void main(String[] args) throws Exception {
+        CapturaBO bo = new CapturaBOImpl();
+        List<Captura> infracciones = bo.obtenerCapturasConExcesoDeVelocidad();
+        for (Captura c : infracciones) {
+            System.out.println("Infracción: id=" + c.getId() + " placa=" + c.getPlaca() + " vel=" + c.getVelocidad());
+            bo.actualizar(c); // marca PROCESADO
+        }
+    }
+}
+
+
+Nota importante: si tienes que actualizar solo después de confirmar (transacciones), agrupa en una transacción en la capa de persistencia si el RDBMS lo permite.
+
+Parte B — Consultar en MySQL y MSSQL y combinar resultados (Pregunta 2 segunda sección)
+
+Requisitos: conexiones almacenadas en archivo externo, contraseñas encriptadas, no duplicar código, patrón DAO, capa de negocio que orquesta.
+
+Idea general
+
+Crear dos DBManagers (uno para MySQL y otro para MSSQL) que implementen la misma interfaz DBManagerIfc o DataSource.
+
+Crear un único VehiculoDAO genérico que use una DataSource/Connection inyectada. De esta forma no duplicas lógica: la misma implementación DAO funcionará con cualquier conexión.
+
+En la capa de negocio (VehiculoBO) inyectas dos instancias de DAO (una para cada DB) o reutilizas la fábrica para crear DAOs pasando la conexión, llamas listarPorPropietario(...) en ambas, combinas resultados (merge) y devuelves.
+
+Estructura sugerida
+com.transitsoft.db
+ ├ DBManagerMySQL (leer db_mysql.properties)
+ └ DBManagerMSSQL (leer db_mssql.properties)
+com.transitsoft.persistencia.dao
+ ├ VehiculoDAO (interface)
+ ├ VehiculoDAOImpl (recibe DataSource/Connection en ctor)
+com.transitsoft.negocio
+ └ VehiculoBOImpl (usa dos instancias de VehiculoDAO, una por DB)
+
+DBManager con lectura de archivo externo (dos archivos db_mysql.properties, db_mssql.properties) y descifrado de password
+
+Implementa DBManagerFactory.getDBManager("mysql") y .getDBManager("mssql") que leen sus respectivos archivos y devuelven una DataSource o Connection.
+
+Ejemplo fábrica:
+
+public class DBManagerFactory {
+    public static DBManager get(String clave) {
+        if ("mysql".equalsIgnoreCase(clave)) return DBManagerMySQL.getInstance();
+        if ("mssql".equalsIgnoreCase(clave)) return DBManagerMSSQL.getInstance();
+        throw new IllegalArgumentException("No support");
+    }
+}
+
+VehiculoDAO (unificado)
+public interface VehiculoDAO {
+    List<Vehiculo> buscarPorPropietario(String dni, String nombres, String apellidos) throws Exception;
+}
+
+
+VehiculoDAOImpl recibe la Connection (o DBManager) en el constructor:
+
+public class VehiculoDAOImpl implements VehiculoDAO {
+    private final DBManager db;
+
+    public VehiculoDAOImpl(DBManager db) { this.db = db; }
+
+    @Override
+    public List<Vehiculo> buscarPorPropietario(String dni, String nombres, String apellidos) throws Exception {
+        String sql = "SELECT v.* FROM vehiculo v JOIN vehiculo_propietario vp ON v.id=vp.id_vehiculo JOIN propietario p ON vp.id_propietario=p.id WHERE 1=1";
+        // append filters según parámetros no nulos
+        try (Connection c = db.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
+            // set params...
+            ResultSet rs = ps.executeQuery();
+            // mapear a DTO Vehiculo
+        }
+    }
+}
+
+VehiculoBOImpl (orquestador)
+public class VehiculoBOImpl {
+    private final VehiculoDAO daoMysql;
+    private final VehiculoDAO daoMssql;
+
+    public VehiculoBOImpl() {
+        this.daoMysql = new VehiculoDAOImpl(DBManagerFactory.get("mysql"));
+        this.daoMssql = new VehiculoDAOImpl(DBManagerFactory.get("mssql"));
+    }
+
+    public List<Vehiculo> buscarCombinado(String dni, String nombres, String apellidos) throws Exception {
+        List<Vehiculo> a = daoMysql.buscarPorPropietario(dni, nombres, apellidos);
+        List<Vehiculo> b = daoMssql.buscarPorPropietario(dni, nombres, apellidos);
+        // Combinar evitando duplicados (por placa o id)
+        Map<String,Vehiculo> mapa = new LinkedHashMap<>();
+        for (Vehiculo v : a) mapa.put(v.getPlaca(), v);
+        for (Vehiculo v : b) mapa.putIfAbsent(v.getPlaca(), v);
+        return new ArrayList<>(mapa.values());
+    }
+}
+
+Encriptado/Desencriptado de contraseñas
+
+Si el enunciado pide “encriptadas”, reutiliza el método de la materia (por ej. Base64 Unicode).
+
+Ideal: db_mysql.properties y db_mssql.properties con password=<encrypted> y la clase CryptoUtils para descifrar en tiempo de ejecución (como mostramos arriba).
+
+Buenas prácticas y consejos de evaluación
+
+No duplicar código: inyecta DBManager en DAO; la misma VehiculoDAOImpl sirve para ambas DBs.
+
+Capa de negocio orquesta (no la persistencia). El BO combina resultados.
+
+Validaciones y excepciones: manejar errores de conexión y fallback (si una DB falla, devuelve resultados de la otra pero registra/loggea el error).
+
+Pruebas: agrega un main o test que lee parámetros desde resources y ejecuta ambos casos.
+
+Transacciones: cuando actualices varios registros en una DB, hazlo en una transacción si es necesario.
+
+No subir archivos con contraseñas a repositorio; usa .gitignore.
+
+Checklist de implementación final (para entregar)
+
+ TransitSoftDBManager con DBManager funcional y db.properties.
+
+ TransitSoftPersistencia con CapturaDAO/CapturaDAOImpl.
+
+ TransitSoftNegocio con CapturaBOImpl, EstrategiaVelocidad, EstrategiaViaRegular, EstrategiaViaRapida, EstragegiaFactory.
+
+ TransitSoftVigilanciaVial o módulo principal con main que:
+
+llama a obtenerCapturasConExcesoDeVelocidad, imprime resultados,
+
+llama a actualizar para marcar PROCESADO.
+
+ Para la segunda parte: DBManagerMySQL y DBManagerMSSQL, VehiculoDAO reutilizable, VehiculoBOImpl que combine resultados.
+
+ Archivos *.properties con contraseñas encriptadas en resources (no en control de versiones si te piden).
+
+ Documentación breve README.md indicando cómo ejecutar y qué archivos editar (host, user, password).
+
+Si quieres te escribo los archivos completos (copiar/pegar) para:
+
+CapturaDAO y CapturaDAOImpl,
+
+CapturaBOImpl,
+
+las dos estrategias y factory,
+
+DBManager y el db.properties de ejemplo,
+
+— dime: ¿prefieres Java (como en el enunciado) o quieres el código en C# para Visual Studio? También dime qué algoritmo de cifrado exacto usan en tu curso (Base64 Unicode o AES) para que el CryptoUtils coincida con lo que esperan.
+
+Dijiste:
+El problema es que me piden todo en C#
+ChatGPT dijo:
+Pensado durante 9s
+
+Perfecto — como te piden todo en C#, te doy un plan concreto y listas de código listas para pegar (con explicaciones) para implementar toda la solución del enunciado en Visual Studio (.NET Framework 4.8.1 o .NET 6/7 si prefieres).
+Voy a cubrir:
+
+configuración (app.config),
+
+DBManager (MySQL y MSSQL) + fábrica,
+
+util de cifrado/descifrado (Base64 Unicode, que suele usarse en la materia),
+
+CapturaDAO (listar + actualizar estado) que funciona para MySQL/MSSQL usando DbConnection,
+
+patrón Strategy (interfaz + EstrategiaViaRegular, EstrategiaViaRapida + factory),
+
+CapturaBOImpl (obtener capturas con exceso, actualizar a PROCESADO),
+
+Program.Main (ejecuta el flujo),
+
+segunda parte: buscar vehículos en ambas BD (reutilizando DAO y evitando duplicar código),
+
+recomendaciones y notas (transacciones, manejo de errores, pruebas).
+
+Todo planteado con buena separación por proyectos/paquetes (capas). Voy directo al código/estructura con breves explicaciones.
+
+1) Estructura sugerida de la solución (Visual Studio)
+
+Puedes mantener la estructura de módulos que te dieron. En C# sería algo así:
+
+Solution TransitSoft
+│
+├─ TransitSoft.DBManager         (librería de clases)  <- DBManager, Factory, CryptoUtils
+├─ TransitSoft.Domain            (librería de clases)  <- DTOs/Entidades (Captura, Camara, Vehiculo, Propietario, ...)
+├─ TransitSoft.Persistence       (librería de clases)  <- DAO interfaces + implementaciones
+├─ TransitSoft.Business          (librería de clases)  <- BOs y strategies
+└─ TransitSoft.ConsoleApp        (aplicación de consola) <- Program.Main para ejecutar pruebas
+
+
+Cada proyecto referencia al anterior según capas: ConsoleApp -> Business -> Persistence -> DBManager + Domain.
+
+2) app.config (credenciales encriptadas)
+
+Usa app.config en el proyecto ejecutable o en cada librería que necesite leer configuración (mejor: centralizar). Ejemplo (valores de ejemplo; no subir al repo sin .gitignore):
+
+<?xml version="1.0" encoding="utf-8" ?>
+<configuration>
+  <appSettings>
+    <!-- MySQL -->
+    <add key="mysql.host" value="labs-2025-2-prog3-mysql.cuz6..." />
+    <add key="mysql.port" value="3306" />
+    <add key="mysql.database" value="transitsoft" />
+    <add key="mysql.user" value="admin" />
+    <!-- contraseña en Base64-UTF16 por ejemplo -->
+    <add key="mysql.password" value="UAByAG8AZwByAGEAbQBh...==" />
+
+    <!-- MSSQL -->
+    <add key="mssql.server" value="your-sqlserver-host" />
+    <add key="mssql.instance" value="" />
+    <add key="mssql.database" value="transitsoft" />
+    <add key="mssql.user" value="sa" />
+    <add key="mssql.password" value="...base64..." />
+  </appSettings>
+</configuration>
+
+
+Nota: la contraseña la encriptas con el mismo método que usarás para descifrar (a continuación doy ejemplo Base64-UTF16 para que coincida con Convert.ToBase64String(Encoding.Unicode.GetBytes(text)) usado típicamente en la cátedra).
+
+3) Util: CryptoUtils (descifrar Base64 Unicode)
+// TransitSoft.DBManager -> CryptoUtils.cs
+using System;
+using System.Text;
+
+namespace TransitSoft.DBManager.Util
+{
+    public static class CryptoUtils
+    {
+        // Si en la materia usan Convert.ToBase64String(Encoding.Unicode.GetBytes(text))
+        public static string DecodeBase64Unicode(string base64)
+        {
+            if (string.IsNullOrWhiteSpace(base64)) return string.Empty;
+            byte[] bytes = Convert.FromBase64String(base64.Trim());
+            return Encoding.Unicode.GetString(bytes);
+        }
+
+        // Si necesitaras cifrar (para generar app.config)
+        public static string EncodeBase64Unicode(string plain)
+        {
+            byte[] bytes = Encoding.Unicode.GetBytes(plain ?? "");
+            return Convert.ToBase64String(bytes);
+        }
+    }
+}
+
+4) DBManager & Factory — enfoque simple y reutilizable
+
+Usaremos DbConnection y DbProviderFactory para ser genéricos. Implementaremos IDBManager y dos concretes (MySQL y MSSQL) + DBManagerFactory.
+
+Interfaz
+// TransitSoft.DBManager
+using System.Data.Common;
+
+namespace TransitSoft.DBManager
+{
+    public interface IDBManager
+    {
+        DbConnection GetConnection();
+    }
+}
+
+DBManagerMySQL
+
+(usa MySql.Data package)
+
+// TransitSoft.DBManager -> DBManagerMySQL.cs
+using System;
+using System.Configuration;
+using System.Data.Common;
+using MySql.Data.MySqlClient;
+using TransitSoft.DBManager.Util;
+
+namespace TransitSoft.DBManager.Impl
+{
+    public class DBManagerMySQL : IDBManager
+    {
+        private readonly string connectionString;
+
+        public DBManagerMySQL()
+        {
+            string host = ConfigurationManager.AppSettings["mysql.host"];
+            string port = ConfigurationManager.AppSettings["mysql.port"];
+            string db = ConfigurationManager.AppSettings["mysql.database"];
+            string user = ConfigurationManager.AppSettings["mysql.user"];
+            string encPwd = ConfigurationManager.AppSettings["mysql.password"];
+            string pwd = CryptoUtils.DecodeBase64Unicode(encPwd);
+
+            // MySqlConnectionStringBuilder para componer
+            var csb = new MySqlConnectionStringBuilder()
+            {
+                Server = host,
+                Port = UInt32.Parse(port),
+                Database = db,
+                UserID = user,
+                Password = pwd,
+                SslMode = MySqlSslMode.None,
+                // Opciones extra si es necesario
+            };
+            connectionString = csb.ConnectionString;
+        }
+
+        public DbConnection GetConnection()
+        {
+            var c = new MySqlConnection(connectionString);
+            return c; // caller opens/disposes
+        }
+    }
+}
+
+DBManagerMSSQL
+
+(usa System.Data.SqlClient)
+
+// TransitSoft.DBManager -> DBManagerMSSQL.cs
+using System;
+using System.Configuration;
+using System.Data.Common;
+using System.Data.SqlClient;
+using TransitSoft.DBManager.Util;
+
+namespace TransitSoft.DBManager.Impl
+{
+    public class DBManagerMSSQL : IDBManager
+    {
+        private readonly string connectionString;
+
+        public DBManagerMSSQL()
+        {
+            string server = ConfigurationManager.AppSettings["mssql.server"];
+            string db = ConfigurationManager.AppSettings["mssql.database"];
+            string user = ConfigurationManager.AppSettings["mssql.user"];
+            string encPwd = ConfigurationManager.AppSettings["mssql.password"];
+            string pwd = CryptoUtils.DecodeBase64Unicode(encPwd);
+
+            var csBuilder = new SqlConnectionStringBuilder()
+            {
+                DataSource = server,
+                InitialCatalog = db,
+                UserID = user,
+                Password = pwd,
+                IntegratedSecurity = false,
+                // Trusted_Connection etc si es Windows Auth
+            };
+            connectionString = csBuilder.ConnectionString;
+        }
+
+        public DbConnection GetConnection()
+        {
+            return new SqlConnection(connectionString);
+        }
+    }
+}
+
+DBManagerFactory
+// TransitSoft.DBManager -> DBManagerFactory.cs
+using System;
+
+namespace TransitSoft.DBManager
+{
+    public static class DBManagerFactory
+    {
+        public static IDBManager Create(string engine)
+        {
+            if (string.Equals(engine, "mysql", StringComparison.OrdinalIgnoreCase))
+                return new Impl.DBManagerMySQL();
+            if (string.Equals(engine, "mssql", StringComparison.OrdinalIgnoreCase))
+                return new Impl.DBManagerMSSQL();
+            throw new ArgumentException("Motor desconocido: " + engine);
+        }
+    }
+}
+
+
+Uso: en un DAO se inyecta o pide IDBManager y se llama using (var conn = dbManager.GetConnection()) { conn.Open(); ... }.
+
+5) Domain DTOs (ejemplos mínimos)
+
+Asumo que TransitSoft.Domain ya tiene clases, pero doy un mínimo para Captura y Camara.
+
+// TransitSoft.Domain -> Captura.cs
+using System;
+
+namespace TransitSoft.Domain
+{
+    public class Camara
+    {
+        public int Id {get; set;}
+        public string CodigoSerie {get; set;}
+        public string Modelo {get; set;}
+        // lat, lon etc...
+    }
+
+    public class Captura
+    {
+        public int Id {get; set;}
+        public string Placa {get; set;}
+        public double Velocidad {get; set;}
+        public DateTime FechaCaptura {get; set;}
+        public string Estado {get; set;} // REGISTRADO / PROCESADO
+        public Camara Camara {get; set;}
+    }
+}
+
+6) Persistence: CapturaDAO interface + implementation (usando DbConnection)
+Interfaz
+// TransitSoft.Persistence -> ICapturaDAO.cs
+using System.Collections.Generic;
+using TransitSoft.Domain;
+
+namespace TransitSoft.Persistence
+{
+    public interface ICapturaDAO
+    {
+        List<Captura> ListarCapturas();
+        bool ActualizarEstado(int capturaId, string nuevoEstado);
+    }
+}
+
+Implementación (usa IDBManager inyectado)
+// TransitSoft.Persistence -> CapturaDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.Common;
+using TransitSoft.DBManager;
+using TransitSoft.Domain;
+
+namespace TransitSoft.Persistence
+{
+    public class CapturaDAO : ICapturaDAO
+    {
+        private readonly IDBManager dbManager;
+
+        public CapturaDAO(IDBManager dbManager)
+        {
+            this.dbManager = dbManager;
+        }
+
+        public List<Captura> ListarCapturas()
+        {
+            var list = new List<Captura>();
+
+            using (DbConnection conn = dbManager.GetConnection())
+            {
+                conn.Open();
+
+                // Si tienes SP listarCapturas:
+                // using (var cmd = conn.CreateCommand()) { cmd.CommandText = "listarCapturas"; cmd.CommandType = CommandType.StoredProcedure; ... }
+
+                // Ejemplo con consulta SQL (ajusta nombres de columnas):
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT c.id, c.placa, c.velocidad, c.fecha_captura, c.estado, ca.id as cam_id, ca.codigo_serie FROM captura c JOIN camara ca ON c.id_camara = ca.id WHERE c.estado = 'REGISTRADO'";
+                    cmd.CommandType = CommandType.Text;
+
+                    using (var rdr = cmd.ExecuteReader())
+                    {
+                        while (rdr.Read())
+                        {
+                            var cap = new Captura();
+                            cap.Id = rdr.GetInt32(rdr.GetOrdinal("id"));
+                            cap.Placa = rdr.GetString(rdr.GetOrdinal("placa"));
+                            cap.Velocidad = rdr.GetDouble(rdr.GetOrdinal("velocidad"));
+                            cap.FechaCaptura = rdr.GetDateTime(rdr.GetOrdinal("fecha_captura"));
+                            cap.Estado = rdr.GetString(rdr.GetOrdinal("estado"));
+
+                            var cam = new Camara();
+                            cam.Id = rdr.GetInt32(rdr.GetOrdinal("cam_id"));
+                            cam.CodigoSerie = rdr.GetString(rdr.GetOrdinal("codigo_serie"));
+                            cap.Camara = cam;
+
+                            list.Add(cap);
+                        }
+                    }
+                }
+            }
+
+            return list;
+        }
+
+        public bool ActualizarEstado(int capturaId, string nuevoEstado)
+        {
+            using (DbConnection conn = dbManager.GetConnection())
+            {
+                conn.Open();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "UPDATE captura SET estado = @estado WHERE id = @id";
+                    var p1 = cmd.CreateParameter(); p1.ParameterName = "@estado"; p1.Value = nuevoEstado; cmd.Parameters.Add(p1);
+                    var p2 = cmd.CreateParameter(); p2.ParameterName = "@id"; p2.Value = capturaId; cmd.Parameters.Add(p2);
+                    int rows = cmd.ExecuteNonQuery();
+                    return rows > 0;
+                }
+            }
+        }
+    }
+}
+
+
+Nota: si usas Stored Procedure listarCapturas, cambia CommandType = CommandType.StoredProcedure y usa cmd.CommandText = "listarCapturas" y parámetros si fueran necesarios.
+
+7) Business: Strategy y CapturaBOImpl
+Interfaz de estrategia
+// TransitSoft.Business -> IEstrategiaVelocidad.cs
+using TransitSoft.Domain;
+
+namespace TransitSoft.Business.Strategy
+{
+    public interface IEstrategiaVelocidad
+    {
+        bool HayInfraccion(Captura captura);
+    }
+}
+
+Estrategias concretas
+// Via regular: límite 50
+public class EstrategiaViaRegular : IEstrategiaVelocidad
+{
+    private const double LIMITE = 50.0;
+    public bool HayInfraccion(Captura captura)
+    {
+        return captura.Velocidad > LIMITE;
+    }
+}
+
+// Via rápida: límite 80
+public class EstrategiaViaRapida : IEstrategiaVelocidad
+{
+    private const double LIMITE = 80.0;
+    public bool HayInfraccion(Captura captura)
+    {
+        return captura.Velocidad > LIMITE;
+    }
+}
+
+Factory de estrategia
+// TransitSoft.Business -> EstrategiaFactory.cs
+using TransitSoft.Domain;
+
+namespace TransitSoft.Business.Strategy
+{
+    public static class EstrategiaFactory
+    {
+        public static IEstrategiaVelocidad Crear(Captura c)
+        {
+            var codigo = c?.Camara?.CodigoSerie ?? "";
+            if (codigo.Equals("CAM-LIM-002", StringComparison.OrdinalIgnoreCase))
+                return new EstrategiaViaRapida();
+            // si necesitas mapear otras cámaras a avenidas, hazlo aquí
+            return new EstrategiaViaRegular();
+        }
+    }
+}
+
+CapturaBOImpl
+// TransitSoft.Business -> CapturaBOImpl.cs
+using System;
+using System.Collections.Generic;
+using TransitSoft.Domain;
+using TransitSoft.Persistence;
+using TransitSoft.Business.Strategy;
+
+namespace TransitSoft.Business
+{
+    public class CapturaBOImpl
+    {
+        private readonly ICapturaDAO capturaDAO;
+
+        public CapturaBOImpl(ICapturaDAO capturaDAO)
+        {
+            this.capturaDAO = capturaDAO;
+        }
+
+        public List<Captura> ObtenerCapturasConExcesoDeVelocidad()
+        {
+            var todas = capturaDAO.ListarCapturas();
+            var infracciones = new List<Captura>();
+            foreach (var c in todas)
+            {
+                var estrategia = EstrategiaFactory.Crear(c);
+                if (estrategia.HayInfraccion(c)) infracciones.Add(c);
+            }
+            return infracciones;
+        }
+
+        public void ActualizarAProcesado(Captura captura)
+        {
+            if (captura == null) throw new ArgumentNullException(nameof(captura));
+            capturaDAO.ActualizarEstado(captura.Id, "PROCESADO");
+        }
+    }
+}
+
+8) Program.Main (ConsoleApp) — flujo completo
+// TransitSoft.ConsoleApp -> Program.cs
+using System;
+using TransitSoft.DBManager;
+using TransitSoft.DBManager.Impl;
+using TransitSoft.Persistence;
+using TransitSoft.Business;
+using System.Collections.Generic;
+
+namespace TransitSoft.ConsoleApp
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // Crear DBManager para la base que corresponde (MySQL en este ejercicio)
+            IDBManager dbMysql = DBManagerFactory.Create("mysql");
+
+            ICapturaDAO capturaDAO = new CapturaDAO(dbMysql);
+            var capturaBO = new CapturaBOImpl(capturaDAO);
+
+            try
+            {
+                List<TransitSoft.Domain.Captura> infracciones = capturaBO.ObtenerCapturasConExcesoDeVelocidad();
+                Console.WriteLine("Infracciones encontradas: " + infracciones.Count);
+                foreach (var i in infracciones)
+                {
+                    Console.WriteLine($"Id:{i.Id} Placa:{i.Placa} Vel:{i.Velocidad} Cam:{i.Camara?.CodigoSerie}");
+                    capturaBO.ActualizarAProcesado(i);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+                // loggear
+            }
+
+            Console.WriteLine("Terminado.");
+            Console.ReadLine();
+        }
+    }
+}
+
+9) Segunda parte: buscar Vehículos en MySQL + MSSQL y combinar resultados (sin duplicar código)
+Idea
+
+Reutiliza VehiculoDAO que recibe IDBManager en constructor.
+
+Crea dos instancias del DAO enviando DBManagerFactory.Create("mysql") y DBManagerFactory.Create("mssql").
+
+Llama BuscarPorPropietario en ambas y combina resultados (por placa o id).
+
+Ejemplo de interfaz (VehiculoDAO)
+public interface IVehiculoDAO
+{
+    List<Vehiculo> BuscarPorPropietario(string dni, string nombres, string apellidos);
+}
+
+Implementación reutilizable
+public class VehiculoDAO : IVehiculoDAO
+{
+    private readonly IDBManager db;
+    public VehiculoDAO(IDBManager db) { this.db = db; }
+
+    public List<Vehiculo> BuscarPorPropietario(string dni, string nombres, string apellidos)
+    {
+        var res = new List<Vehiculo>();
+        using (var conn = db.GetConnection())
+        {
+            conn.Open();
+            using (var cmd = conn.CreateCommand())
+            {
+                // Construir SQL con filtros opcionales
+                var sql = @"SELECT v.id, v.placa, v.marca, v.modelo, v.anho
+                            FROM vehiculo v
+                            JOIN vehiculo_propietario vp ON vp.id_vehiculo = v.id
+                            JOIN propietario p ON p.id = vp.id_propietario
+                            WHERE 1=1";
+                if (!string.IsNullOrWhiteSpace(dni)) sql += " AND p.dni = @dni";
+                if (!string.IsNullOrWhiteSpace(nombres)) sql += " AND p.nombres LIKE @nombres";
+                if (!string.IsNullOrWhiteSpace(apellidos)) sql += " AND p.apellidos LIKE @apellidos";
+                cmd.CommandText = sql;
+
+                if (!string.IsNullOrWhiteSpace(dni))
+                {
+                    var p = cmd.CreateParameter(); p.ParameterName = "@dni"; p.Value = dni; cmd.Parameters.Add(p);
+                }
+                if (!string.IsNullOrWhiteSpace(nombres))
+                {
+                    var p = cmd.CreateParameter(); p.ParameterName = "@nombres"; p.Value = "%" + nombres + "%"; cmd.Parameters.Add(p);
+                }
+                if (!string.IsNullOrWhiteSpace(apellidos))
+                {
+                    var p = cmd.CreateParameter(); p.ParameterName = "@apellidos"; p.Value = "%" + apellidos + "%"; cmd.Parameters.Add(p);
+                }
+
+                using (var rdr = cmd.ExecuteReader())
+                {
+                    while (rdr.Read())
+                    {
+                        var v = new Vehiculo { 
+                            Id = rdr.GetInt32(0), 
+                            Placa = rdr.GetString(1), 
+                            Marca = rdr.GetString(2), 
+                            Modelo = rdr.GetString(3),
+                            Anho = rdr.GetInt32(4)
+                        };
+                        res.Add(v);
+                    }
+                }
+            }
+        }
+        return res;
+    }
+}
+
+BO que orquesta y combina
+public class VehiculoBO
+{
+    private readonly IVehiculoDAO daoMysql;
+    private readonly IVehiculoDAO daoMssql;
+
+    public VehiculoBO(IVehiculoDAO daoMysql, IVehiculoDAO daoMssql)
+    {
+        this.daoMysql = daoMysql;
+        this.daoMssql = daoMssql;
+    }
+
+    public List<Vehiculo> BuscarCombinado(string dni, string nombres, string apellidos)
+    {
+        var a = daoMysql.BuscarPorPropietario(dni, nombres, apellidos);
+        var b = daoMssql.BuscarPorPropietario(dni, nombres, apellidos);
+
+        var mapa = new Dictionary<string, Vehiculo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var v in a) mapa[v.Placa] = v;
+        foreach (var v in b) if (!mapa.ContainsKey(v.Placa)) mapa[v.Placa] = v;
+        return new List<Vehiculo>(mapa.Values);
+    }
+}
+
+
+Así no duplicas la lógica SQL: el DAO es el mismo, pero con distinta IDBManager.
+
+10) Buenas prácticas y notas finales
+
+No duplicar código: inyecta IDBManager en DAOs; el mismo DAO funciona con cualquier motor.
+
+Manejo de conexiones: usar using para disponer DbConnection y DbDataReader.
+
+Transacciones: si actualizas muchas capturas y quieres atomicidad, abre DbConnection, DbTransaction y pásalo a cada comando.
+
+Manejo de excepciones: captura DbException y loggea. No ocultes errores sin registro.
+
+Pruebas: crea un ConsoleApp o unit tests que invoquen los BOs.
+
+No subir passwords: usa .gitignore para evitar subir app.config si contiene credenciales; idealmente pasar credenciales en runtime o usar secretos.
+
+Encoding de password: asegúrate cómo te piden encriptar (en tu código usé Base64 Unicode: Convert.ToBase64String(Encoding.Unicode.GetBytes(text))); si la materia pidió otro algoritmo, reemplaza CryptoUtils.
+
+Si quieres, continúo y te doy:
+
+✅ los ficheros completos (archivos .cs completos listos para pegar) para cada clase (DBManagerMySQL, DBManagerMSSQL, CryptoUtils, CapturaDAO, CapturaBOImpl, estrategias, Program.cs).
+
+✅ ejemplos de app.config exacto con contraseñas ya codificadas (si me das la contraseña clara, te devuelvo la Base64).
+
+✅ una versión que use StoredProcedure listarCapturas() en MySQL (cambio rápido en el DAO).
+
+Dime cuál quieres primero: ¿te genero los archivos .cs completos listos para pegar o prefieres que antes adapte algo a las clases que ya tienes en tu proyecto (nombres de DTOs/columnas)?
+
+Dijiste:
+La presente es para comentarles que tras haber coordinado entre los docentes del curso, hemos acordado que el laboratorio de mañana sea un ejercicio en C# sobre los mismos temas que fueron evaluados en el examen parcial, es decir, ya no será sobre servicios web como lo describe el cronograma.
+Se solicitará que se conecten desde C# a dos motores de base de datos por lo que les pedimos que lleven 2 instancias (una de MySQL y otra de MSSQL).
+La evaluación será sobre la misma estructura de base de datos del examen parcial (por lo que se les solicita que lleven sus motores con sus tablas creadas y registros insertados).
+Se les brindará únicamente 2 archivos: TransitSoft.Master y Consulta.aspx por lo que ustedes deben llevar preparada su plantilla para poder incorporar estos dos archivos. Tener en cuenta que no se brindará un proyecto completo en C# - Visual Studio, sino únicamente 2 archivos o ficheros. Tomar en consideración esto pues se les solicitará que ustedes vean la manera de incorporarlos en los proyectos que lleven como plantilla.
+Se les pedirá que trabajen  la funcionalidad solicitada en capas como han venido viendo en el curso: Persistencia, Dominio / Modelo, Negocio y Aplicación / Presentación, y con los patrones de diseño enseñados conservando buenas prácticas en temas de optimización de programación de código fuente.
+ChatGPT dijo:
+
+Perfecto 🔥, esto confirma exactamente qué tipo de examen te van a tomar mañana, y lo bueno es que ya tienes todo el contexto.
+Te resumo lo más importante y lo que debes preparar en tu plantilla C# (Visual Studio) antes del examen, junto con cómo resolver lo que van a pedirte 👇
+
+🧩 Estructura esperada del proyecto
+
+Tu proyecto debe seguir la arquitectura en capas clásica:
+
+TransitSoft
+│
+├── TransitSoftDominio         → Clases de dominio (por ejemplo: Vehiculo, Propietario, Infraccion)
+│
+├── TransitSoftPersistencia    → DAO (acceso a BD, conexión a MySQL y MSSQL)
+│
+├── TransitSoftNegocio         → Lógica de negocio (usa los DAO)
+│
+└── TransitSoftPresentacion    → Capa web (ASP.NET WebForms con los archivos TransitSoft.Master y Consulta.aspx)
+
+🧱 Capa de Persistencia (DAO)
+
+Aquí es donde tendrás que conectarte a ambas bases de datos (MySQL y MSSQL).
+
+🔹 Clase DBManager (Singleton)
+
+Deberás implementar algo como esto para cada motor de base de datos:
+
+public abstract class DBManager
+{
+    public abstract IDbConnection GetConnection();
+}
+
+
+Y luego dos implementaciones concretas:
+
+public class DBManagerMySQL : DBManager
+{
+    public override IDbConnection GetConnection()
+    {
+        string connStr = Decrypt(File.ReadAllText("mysql_connection.txt"));
+        return new MySqlConnection(connStr);
+    }
+}
+
+public class DBManagerMSSQL : DBManager
+{
+    public override IDbConnection GetConnection()
+    {
+        string connStr = Decrypt(File.ReadAllText("mssql_connection.txt"));
+        return new SqlConnection(connStr);
+    }
+}
+
+
+🟨 Punto clave: las contraseñas deben estar encriptadas en el archivo externo (usa por ejemplo Convert.ToBase64String para simular el cifrado) y desencriptarse en tiempo de ejecución.
+
+🔹 DAO (Data Access Object)
+
+Tendrás un DAO, por ejemplo VehiculoDAO, que obtenga datos de ambas fuentes:
+
+public class VehiculoDAO
+{
+    private DBManager mysqlManager = new DBManagerMySQL();
+    private DBManager mssqlManager = new DBManagerMSSQL();
+
+    public List<Vehiculo> BuscarVehiculos(string dni, string nombre, string apellido)
+    {
+        List<Vehiculo> resultado = new List<Vehiculo>();
+
+        // Consulta en MySQL
+        using (var conn = mysqlManager.GetConnection())
+        {
+            conn.Open();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT * FROM vehiculo WHERE dni LIKE @dni AND nombre LIKE @nombre AND apellido LIKE @apellido";
+                cmd.Parameters.Add(new MySqlParameter("@dni", "%" + dni + "%"));
+                cmd.Parameters.Add(new MySqlParameter("@nombre", "%" + nombre + "%"));
+                cmd.Parameters.Add(new MySqlParameter("@apellido", "%" + apellido + "%"));
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        resultado.Add(new Vehiculo { 
+                            Placa = reader["placa"].ToString(),
+                            Propietario = reader["nombre"].ToString()
+                        });
+                    }
+                }
+            }
+        }
+
+        // Consulta en MSSQL
+        using (var conn = mssqlManager.GetConnection())
+        {
+            conn.Open();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT * FROM vehiculo WHERE dni LIKE @dni AND nombre LIKE @nombre AND apellido LIKE @apellido";
+                cmd.Parameters.Add(new SqlParameter("@dni", "%" + dni + "%"));
+                cmd.Parameters.Add(new SqlParameter("@nombre", "%" + nombre + "%"));
+                cmd.Parameters.Add(new SqlParameter("@apellido", "%" + apellido + "%"));
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        resultado.Add(new Vehiculo {
+                            Placa = reader["placa"].ToString(),
+                            Propietario = reader["nombre"].ToString()
+                        });
+                    }
+                }
+            }
+        }
+
+        return resultado;
+    }
+}
+
+⚙️ Capa de Negocio
+
+Esta capa orquesta las llamadas a los DAO.
+Por ejemplo:
+
+public class VehiculoBO
+{
+    private VehiculoDAO vehiculoDAO = new VehiculoDAO();
+
+    public List<Vehiculo> ConsultarVehiculos(string dni, string nombre, string apellido)
+    {
+        return vehiculoDAO.BuscarVehiculos(dni, nombre, apellido);
+    }
+}
+
+💻 Capa de Presentación
+
+En Consulta.aspx, tendrás un formulario para ingresar los criterios (DNI, nombre, apellido), y un GridView para mostrar los resultados:
+
+<asp:TextBox ID="txtDNI" runat="server" />
+<asp:TextBox ID="txtNombre" runat="server" />
+<asp:TextBox ID="txtApellido" runat="server" />
+<asp:Button ID="btnBuscar" runat="server" Text="Buscar" OnClick="btnBuscar_Click" />
+<asp:GridView ID="gvVehiculos" runat="server"></asp:GridView>
+
+
+Y en Consulta.aspx.cs:
+
+protected void btnBuscar_Click(object sender, EventArgs e)
+{
+    VehiculoBO bo = new VehiculoBO();
+    var lista = bo.ConsultarVehiculos(txtDNI.Text, txtNombre.Text, txtApellido.Text);
+    gvVehiculos.DataSource = lista;
+    gvVehiculos.DataBind();
+}
+
+🧮 Capa de Dominio
+
+Clases simples como:
+
+public class Vehiculo
+{
+    public string Placa { get; set; }
+    public string Propietario { get; set; }
+    public string DNI { get; set; }
+}
+
+🔐 Archivo externo de configuración (ejemplo)
+
+mysql_connection.txt (encriptado con Base64):
+
+bXlzcWw6Ly9yb290OnBhc3N3b3JkQDEyNy4wLjAuMTozMzA2L2RyYWdvbmlz
+
+
+Y lo desencriptas así:
+
+string Decrypt(string encoded) => Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+
+✅ Resumen de lo que te van a evaluar
+Criterio	Qué debes mostrar
+Arquitectura en capas	Presentación / Negocio / Persistencia / Dominio separados
+Uso de DAO	Consulta y combinación de datos de dos BD
+Archivo externo con datos de conexión	Sí, con contraseñas cifradas
+Patrón Singleton	En DBManager
+Buenas prácticas	Sin duplicar código, uso de listas, validaciones básicas
+Funcionando en C# (WebForms)	Botón que muestra resultados en un GridView
+
+¿Quieres que te deje una plantilla base lista en C# (Visual Studio) con las capas ya configuradas y las clases esqueleto (DBManager, DAO, BO, Dominio, WebForm)?
+Así solo le insertas los archivos TransitSoft.Master y Consulta.aspx en el examen.
+
+Dijiste:
+Ya
+ChatGPT dijo:
+
+Perfecto 😎
+Antes de generarte la plantilla base, quiero confirmar unos detalles para que esté lista exactamente como la vas a necesitar mañana:
+
+✅ ¿Vas a usar Visual Studio 2022 con un proyecto WebForms (.NET Framework), no .NET Core?
+
+⚙️ ¿Quieres que la plantilla esté organizada así?:
+
+TransitSoftDominio
+TransitSoftPersistencia
+TransitSoftNegocio
+TransitSoftPresentacion (Web)
+
+
+(cada una como un proyecto dentro de la solución, conectadas por referencias).
+
+🧩 ¿Quieres que incluya ya los DBManagers para MySQL y MSSQL, con ejemplos de DAO y BO listos para consulta (como “VehiculoDAO” y “VehiculoBO”)?
+
+🔐 ¿Deseas que los archivos externos de conexión estén simulados (con contraseñas codificadas en Base64 para desencriptar)?
+
+🧱 ¿Prefieres que el ejemplo de dominio sea Vehículo / Propietario, como en la pregunta del examen, o Captura / Infracción (como en el parcial)?
+
+Apenas me confirmes esos 5 puntos, te dejo la plantilla completa con comentarios para que puedas abrirla en Visual Studio y estar 100 % listo para el examen.
+
+Dijiste:
+1. ✅ ¿Vas a usar Visual Studio 2022 con un proyecto WebForms (.NET Framework), no .NET Core?
+Sí
+2. TransitSoftWA
+3. 🧩 ¿Quieres que incluya ya los DBManagers para MySQL y MSSQL, con ejemplos de DAO y BO listos para consulta (como “VehiculoDAO” y “VehiculoBO”)?
+Sí
+4. 🔐 ¿Deseas que los archivos externos de conexión estén simulados (con contraseñas codificadas en Base64 para desencriptar)?
+Sí
+5. 🧱 ¿Prefieres que el ejemplo de dominio sea Vehículo / Propietario, como en la pregunta del examen, o Captura / Infracción (como en el parcial)?
+Sí
+ChatGPT dijo:
+
+Perfecto 👌 entonces la estructura quedará así:
+
+📁 Solución TransitSoftWA
+
+TransitSoftWA.sln
+│
+├── TransitSoftDominio        ← Clases DTO / Modelo (Vehículo, Propietario)
+├── TransitSoftPersistencia   ← DAO + conexión a MySQL / MSSQL
+├── TransitSoftNegocio        ← Lógica de negocio (BO)
+└── TransitSoftPresentacion   ← Proyecto WebForms (usa MainLayout.master + Consulta.aspx)
+
+
+💡 Incluye:
+
+DBManager para MySQL y MSSQL, con lectura desde un archivo externo .config.
+
+Contraseñas codificadas en Base64, con métodos Cifrar y Descifrar.
+
+DAO de ejemplo (VehiculoDAO) que ejecuta la misma consulta en ambas BD.
+
+BO (VehiculoBO) que orquesta la consulta doble.
+
+Comentarios detallados para que entiendas el flujo completo.
+
+Antes de generarte el código completo (serán varias clases + web.config + ejemplos de lectura),
+¿quieres que:
+✅ te lo prepare todo en un solo bloque (para copiar/pegar completo en Visual Studio),
+o
+📄 prefieres que te lo dé por capas (Dominio, Persistencia, Negocio, Presentación), cada una por separado para armarlo tú mismo?
+
+Dijiste:
+Por capas
+ChatGPT dijo:
+
+Perfecto — te entrego por capas todo lo necesario, listo para copiar/pegar en tu solución TransitSoftWA (WebForms .NET Framework, Visual Studio 2022).
+Incluyo: Dominio, DBManager (MySQL + MSSQL + fábrica + util de cifrado), Persistencia (DAO), Negocio (BO) y Presentación (Consulta.aspx + code-behind), además de un web.config de ejemplo y notas para ejecutar. Cada bloque tiene comentarios para que entiendas dónde va y por qué.
+
+Instrucciones rápidas antes de pegar código
+
+Crea la solución TransitSoftWA y los proyectos (Class Library / WebForms) según tu organización:
+
+TransitSoftDominio (Class Library)
+
+TransitSoftPersistencia (Class Library) — referenciar TransitSoftDominio y TransitSoftDBManager si lo separas.
+
+TransitSoftNegocio (Class Library) — referenciar Persistencia y Dominio.
+
+TransitSoftPresentacion (WebForms) — referenciar Negocio y Dominio.
+
+Instala paquetes NuGet necesarios en los proyectos que usen DB: MySql.Data y (opcional) System.Data.SqlClient (ó Microsoft.Data.SqlClient si prefieres).
+
+Agrega las clases que te doy en sus respectivos proyectos.
+
+Copia el web.config (o agrega appSettings) en el proyecto Web. Ajusta hosts/credenciales.
+
+Ejecuta y prueba; si la instancia AWS requiere acceso, asegúrate de que tu red/cliente tenga acceso.
+
+1) CAPA DOMINIO (TransitSoftDominio)
+
+Archivo: Vehiculo.cs
+
+// TransitSoftDominio/Vehiculo.cs
+using System;
+
+namespace TransitSoftDominio
+{
+    // DTO / entidad simple para Vehículo
+    public class Vehiculo
+    {
+        public int Id { get; set; }
+        public string Placa { get; set; }   // ej. "ABC-123"
+        public string Marca { get; set; }
+        public string Modelo { get; set; }
+        public int Anho { get; set; }
+        // Información del propietario asociada (opcional)
+        public Propietario Propietario { get; set; }
+    }
+}
+
+
+Archivo: Propietario.cs
+
+// TransitSoftDominio/Propietario.cs
+using System;
+
+namespace TransitSoftDominio
+{
+    public class Propietario
+    {
+        public int Id { get; set; }
+        public string DNI { get; set; }     // ej. "12345678"
+        public string Nombres { get; set; }
+        public string Apellidos { get; set; }
+        public string Direccion { get; set; }
+    }
+}
+
+2) DBMANAGER (biblioteca) — TransitSoftDBManager (puede estar dentro de Persistencia si prefieres)
+2.1 CryptoUtils.cs (descifrado Base64 Unicode)
+// TransitSoftDBManager/Util/CryptoUtils.cs
+using System;
+using System.Text;
+
+namespace TransitSoftDBManager.Util
+{
+    public static class CryptoUtils
+    {
+        // Decodifica Base64 generado con Encoding.Unicode (UTF-16)
+        public static string DecodeBase64Unicode(string base64)
+        {
+            if (string.IsNullOrWhiteSpace(base64)) return string.Empty;
+            byte[] bytes = Convert.FromBase64String(base64.Trim());
+            return Encoding.Unicode.GetString(bytes);
+        }
+
+        // Para generar valores codificados (útil localmente)
+        public static string EncodeBase64Unicode(string plain)
+        {
+            byte[] bytes = Encoding.Unicode.GetBytes(plain ?? "");
+            return Convert.ToBase64String(bytes);
+        }
+    }
+}
+
+2.2 IDBManager.cs
+// TransitSoftDBManager/IDBManager.cs
+using System.Data.Common;
+
+namespace TransitSoftDBManager
+{
+    public interface IDBManager
+    {
+        // Devuelve una conexión (no abierta). Caller debe Open()/Dispose()
+        DbConnection GetConnection();
+    }
+}
+
+2.3 DBManagerMySQL.cs
+// TransitSoftDBManager/Impl/DBManagerMySQL.cs
+using System;
+using System.Configuration;
+using System.Data.Common;
+using MySql.Data.MySqlClient;
+using TransitSoftDBManager.Util;
+
+namespace TransitSoftDBManager.Impl
+{
+    public class DBManagerMySQL : IDBManager
+    {
+        private readonly string connectionString;
+
+        public DBManagerMySQL()
+        {
+            // lee valores desde appSettings (web.config)
+            string host = ConfigurationManager.AppSettings["mysql.host"];
+            string port = ConfigurationManager.AppSettings["mysql.port"];
+            string db = ConfigurationManager.AppSettings["mysql.database"];
+            string user = ConfigurationManager.AppSettings["mysql.user"];
+            string encPwd = ConfigurationManager.AppSettings["mysql.password"]; // Base64 UTF-16
+
+            string pwd = CryptoUtils.DecodeBase64Unicode(encPwd);
+
+            var csb = new MySqlConnectionStringBuilder()
+            {
+                Server = host,
+                Port = UInt32.Parse(port ?? "3306"),
+                Database = db,
+                UserID = user,
+                Password = pwd,
+                SslMode = MySqlSslMode.None,
+                // otros parámetros si los necesitas
+            };
+
+            connectionString = csb.ConnectionString;
+        }
+
+        public DbConnection GetConnection()
+        {
+            return new MySqlConnection(connectionString);
+        }
+    }
+}
+
+2.4 DBManagerMSSQL.cs
+// TransitSoftDBManager/Impl/DBManagerMSSQL.cs
+using System;
+using System.Configuration;
+using System.Data.Common;
+using System.Data.SqlClient;
+using TransitSoftDBManager.Util;
+
+namespace TransitSoftDBManager.Impl
+{
+    public class DBManagerMSSQL : IDBManager
+    {
+        private readonly string connectionString;
+
+        public DBManagerMSSQL()
+        {
+            string server = ConfigurationManager.AppSettings["mssql.server"];
+            string database = ConfigurationManager.AppSettings["mssql.database"];
+            string user = ConfigurationManager.AppSettings["mssql.user"];
+            string encPwd = ConfigurationManager.AppSettings["mssql.password"];
+
+            string pwd = CryptoUtils.DecodeBase64Unicode(encPwd);
+
+            var csb = new SqlConnectionStringBuilder()
+            {
+                DataSource = server,
+                InitialCatalog = database,
+                UserID = user,
+                Password = pwd,
+                IntegratedSecurity = false
+            };
+
+            connectionString = csb.ConnectionString;
+        }
+
+        public DbConnection GetConnection()
+        {
+            return new SqlConnection(connectionString);
+        }
+    }
+}
+
+2.5 DBManagerFactory.cs
+// TransitSoftDBManager/DBManagerFactory.cs
+using System;
+
+namespace TransitSoftDBManager
+{
+    public static class DBManagerFactory
+    {
+        public static IDBManager Create(string engine)
+        {
+            if (string.Equals(engine, "mysql", StringComparison.OrdinalIgnoreCase))
+                return new Impl.DBManagerMySQL();
+            if (string.Equals(engine, "mssql", StringComparison.OrdinalIgnoreCase))
+                return new Impl.DBManagerMSSQL();
+            throw new ArgumentException("Motor desconocido: " + engine);
+        }
+    }
+}
+
+3) PERSISTENCIA (TransitSoftPersistencia) — DAO
+
+Nota: el DAO es reutilizable: recibe un IDBManager y funciona con MySQL o MSSQL igual.
+
+3.1 IVehiculoDAO.cs
+// TransitSoftPersistencia/IVehiculoDAO.cs
+using System.Collections.Generic;
+using TransitSoftDominio;
+
+namespace TransitSoftPersistencia
+{
+    public interface IVehiculoDAO
+    {
+        // Busca vehículos por datos del propietario (filtros opcionales)
+        List<Vehiculo> BuscarPorPropietario(string dni, string nombres, string apellidos);
+    }
+}
+
+3.2 VehiculoDAO.cs
+// TransitSoftPersistencia/VehiculoDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.Common;
+using TransitSoftDBManager;
+using TransitSoftDominio;
+
+namespace TransitSoftPersistencia
+{
+    public class VehiculoDAO : IVehiculoDAO
+    {
+        private readonly IDBManager dbManager;
+
+        public VehiculoDAO(IDBManager dbManager)
+        {
+            this.dbManager = dbManager ?? throw new ArgumentNullException(nameof(dbManager));
+        }
+
+        public List<Vehiculo> BuscarPorPropietario(string dni, string nombres, string apellidos)
+        {
+            var resultado = new List<Vehiculo>();
+
+            using (DbConnection conn = dbManager.GetConnection())
+            {
+                conn.Open();
+                using (DbCommand cmd = conn.CreateCommand())
+                {
+                    // Consulta genérica que funciona en MySQL y MSSQL (SQL estándar básico)
+                    cmd.CommandText =
+@"SELECT v.id, v.placa, v.marca, v.modelo, v.anho,
+        p.id as propietario_id, p.dni, p.nombres, p.apellidos, p.direccion
+  FROM vehiculo v
+  JOIN vehiculo_propietario vp ON vp.id_vehiculo = v.id
+  JOIN propietario p ON p.id = vp.id_propietario
+ WHERE 1=1";
+                    // Agrega filtros condicionales
+                    if (!string.IsNullOrWhiteSpace(dni))
+                    {
+                        cmd.CommandText += " AND p.dni = @dni";
+                        var p = cmd.CreateParameter(); p.ParameterName = "@dni"; p.Value = dni; cmd.Parameters.Add(p);
+                    }
+                    if (!string.IsNullOrWhiteSpace(nombres))
+                    {
+                        cmd.CommandText += " AND p.nombres LIKE @nombres";
+                        var p = cmd.CreateParameter(); p.ParameterName = "@nombres"; p.Value = "%" + nombres + "%"; cmd.Parameters.Add(p);
+                    }
+                    if (!string.IsNullOrWhiteSpace(apellidos))
+                    {
+                        cmd.CommandText += " AND p.apellidos LIKE @apellidos";
+                        var p = cmd.CreateParameter(); p.ParameterName = "@apellidos"; p.Value = "%" + apellidos + "%"; cmd.Parameters.Add(p);
+                    }
+
+                    using (DbDataReader rdr = cmd.ExecuteReader())
+                    {
+                        while (rdr.Read())
+                        {
+                            var v = new Vehiculo()
+                            {
+                                Id = rdr.GetInt32(rdr.GetOrdinal("id")),
+                                Placa = rdr.GetString(rdr.GetOrdinal("placa")),
+                                Marca = rdr.IsDBNull(rdr.GetOrdinal("marca")) ? null : rdr.GetString(rdr.GetOrdinal("marca")),
+                                Modelo = rdr.IsDBNull(rdr.GetOrdinal("modelo")) ? null : rdr.GetString(rdr.GetOrdinal("modelo")),
+                                Anho = rdr.IsDBNull(rdr.GetOrdinal("anho")) ? 0 : rdr.GetInt32(rdr.GetOrdinal("anho")),
+                                Propietario = new Propietario()
+                                {
+                                    Id = rdr.GetInt32(rdr.GetOrdinal("propietario_id")),
+                                    DNI = rdr.IsDBNull(rdr.GetOrdinal("dni")) ? null : rdr.GetString(rdr.GetOrdinal("dni")),
+                                    Nombres = rdr.IsDBNull(rdr.GetOrdinal("nombres")) ? null : rdr.GetString(rdr.GetOrdinal("nombres")),
+                                    Apellidos = rdr.IsDBNull(rdr.GetOrdinal("apellidos")) ? null : rdr.GetString(rdr.GetOrdinal("apellidos")),
+                                    Direccion = rdr.IsDBNull(rdr.GetOrdinal("direccion")) ? null : rdr.GetString(rdr.GetOrdinal("direccion"))
+                                }
+                            };
+                            resultado.Add(v);
+                        }
+                    }
+                }
+            }
+
+            return resultado;
+        }
+    }
+}
+
+
+Comentario: usamos DbConnection y DbCommand genéricos; el proveedor concreto lo provee DBManagerMySQL o DBManagerMSSQL.
+
+4) NEGOCIO (TransitSoftNegocio)
+4.1 VehiculoBO.cs
+// TransitSoftNegocio/VehiculoBO.cs
+using System;
+using System.Collections.Generic;
+using TransitSoftDominio;
+using TransitSoftPersistencia;
+
+namespace TransitSoftNegocio
+{
+    public class VehiculoBO
+    {
+        private readonly IVehiculoDAO daoMysql;
+        private readonly IVehiculoDAO daoMssql;
+
+        // Recibe los dos DBManagers (uno para cada motor)
+        public VehiculoBO(TransitSoftDBManager.IDBManager mysqlManager, TransitSoftDBManager.IDBManager mssqlManager)
+        {
+            // Creamos DAOs que usan managers (no duplicamos lógica)
+            this.daoMysql = new VehiculoDAO(mysqlManager);
+            this.daoMssql = new VehiculoDAO(mssqlManager);
+        }
+
+        // Orquesta la consulta en ambas bases y combina resultados por placa (evita duplicados)
+        public List<Vehiculo> BuscarCombinado(string dni, string nombres, string apellidos)
+        {
+            var resFinal = new List<Vehiculo>();
+            var mapa = new Dictionary<string, Vehiculo>(StringComparer.OrdinalIgnoreCase);
+
+            List<Vehiculo> a = new List<Vehiculo>();
+            List<Vehiculo> b = new List<Vehiculo>();
+
+            try
+            {
+                a = daoMysql.BuscarPorPropietario(dni, nombres, apellidos);
+            }
+            catch (Exception ex)
+            {
+                // si falla una DB, no abortes todo; loggea (aquí Console, en prod usa logger)
+                System.Diagnostics.Debug.WriteLine("Error MySQL: " + ex.Message);
+            }
+
+            try
+            {
+                b = daoMssql.BuscarPorPropietario(dni, nombres, apellidos);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Error MSSQL: " + ex.Message);
+            }
+
+            // Combinar: MySQL primero, MSSQL agrega si placa no existe
+            foreach (var v in a) if (!mapa.ContainsKey(v.Placa)) mapa[v.Placa] = v;
+            foreach (var v in b) if (!mapa.ContainsKey(v.Placa)) mapa[v.Placa] = v;
+
+            foreach (var kv in mapa) resFinal.Add(kv.Value);
+            return resFinal;
+        }
+    }
+}
+
+5) PRESENTACIÓN (WebForms) — TransitSoftPresentacion
+5.1 web.config (ejemplo)
+
+Pega en el proyecto WebForms (TransitSoftPresentacion) y ajusta las claves y contraseñas.
+
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <appSettings>
+    <!-- MySQL -->
+    <add key="mysql.host" value="labs-2025-2-prog3-mysql.cuz6a6q0ybnm.us-east-1.rds.amazonaws.com" />
+    <add key="mysql.port" value="3306" />
+    <add key="mysql.database" value="transitsoft" />
+    <add key="mysql.user" value="admin" />
+    <!-- Ejemplo: contraseña "Programacion3!" codificada con CryptoUtils.EncodeBase64Unicode -->
+    <add key="mysql.password" value="UAByAG8AZwByAGEAbQBhAGMAaQBvAG4AMwE=" />
+
+    <!-- MSSQL -->
+    <add key="mssql.server" value="tu-servidor-sql" />
+    <add key="mssql.database" value="transitsoft" />
+    <add key="mssql.user" value="sa" />
+    <add key="mssql.password" value="UAByAG8AZwByAGEAbQBhAGMAaQBvAG4AMwE=" />
+  </appSettings>
+  <system.web>
+    <compilation debug="true" targetFramework="4.8" />
+    <httpRuntime targetFramework="4.8" />
+  </system.web>
+</configuration>
+
+
+Importante: el string de mysql.password mostrado es sólo ilustrativo. Usa CryptoUtils.EncodeBase64Unicode("tuPassword") localmente para generar el valor.
+
+5.2 Consulta.aspx (interfaz)
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Consulta.aspx.cs" Inherits="TransitSoftPresentacion.Consulta" MasterPageFile="~/MainLayout.master" %>
+
+<asp:Content ID="Content1" ContentPlaceHolderID="Content" runat="server">
+    <h3>Consulta de Vehículos por Propietario</h3>
+
+    <asp:Panel runat="server">
+        <asp:Label runat="server" Text="DNI:" AssociatedControlID="txtDNI" />
+        <asp:TextBox ID="txtDNI" runat="server" />
+        &nbsp;
+        <asp:Label runat="server" Text="Nombres:" AssociatedControlID="txtNombres" />
+        <asp:TextBox ID="txtNombres" runat="server" />
+        &nbsp;
+        <asp:Label runat="server" Text="Apellidos:" AssociatedControlID="txtApellidos" />
+        <asp:TextBox ID="txtApellidos" runat="server" />
+        &nbsp;
+        <asp:Button ID="btnBuscar" runat="server" Text="Buscar" OnClick="btnBuscar_Click" CssClass="btn btn-primary" />
+    </asp:Panel>
+
+    <br />
+
+    <asp:GridView ID="gvResultados" runat="server" AutoGenerateColumns="false" CssClass="table table-striped">
+        <Columns>
+            <asp:BoundField DataField="Placa" HeaderText="Placa" />
+            <asp:BoundField DataField="Marca" HeaderText="Marca" />
+            <asp:BoundField DataField="Modelo" HeaderText="Modelo" />
+            <asp:BoundField DataField="Anho" HeaderText="Año" />
+            <asp:BoundField DataField="Propietario.DNI" HeaderText="DNI" />
+            <asp:BoundField DataField="Propietario.Nombres" HeaderText="Nombres" />
+            <asp:BoundField DataField="Propietario.Apellidos" HeaderText="Apellidos" />
+        </Columns>
+    </asp:GridView>
+</asp:Content>
+
+5.3 Consulta.aspx.cs (code-behind)
+// TransitSoftPresentacion/Consulta.aspx.cs
+using System;
+using System.Web.UI;
+using TransitSoftDBManager;
+using TransitSoftDBManager.Impl;
+using TransitSoftNegocio;
+
+namespace TransitSoftPresentacion
+{
+    public partial class Consulta : Page
+    {
+        protected void Page_Load(object sender, EventArgs e)
+        {
+        }
+
+        protected void btnBuscar_Click(object sender, EventArgs e)
+        {
+            string dni = txtDNI.Text.Trim();
+            string nombres = txtNombres.Text.Trim();
+            string apellidos = txtApellidos.Text.Trim();
+
+            // Creamos DBManagers según appSettings
+            IDBManager mysqlManager = DBManagerFactory.Create("mysql");
+            IDBManager mssqlManager = DBManagerFactory.Create("mssql");
+
+            // Instanciamos el BO que orquesta las dos fuentes
+            var bo = new TransitSoftNegocio.VehiculoBO(mysqlManager, mssqlManager);
+
+            var resultados = bo.BuscarCombinado(dni, nombres, apellidos);
+
+            gvResultados.DataSource = resultados;
+            gvResultados.DataBind();
+        }
+    }
+}
+
+
+Asegúrate de que el Inherits en la directiva de la página coincida con el namespace y nombre de clase.
+
+6) Notas finales / checklist antes del examen
+
+Referencias NuGet:
+
+MySql.Data en los proyectos que usan MySQL.
+
+System.Data.SqlClient (o Microsoft.Data.SqlClient) para SQL Server.
+
+Permisos de red: si usas RDS/AWS, verifica que tu IP esté autorizada (security group) y que el puerto 3306/1433 esté accesible.
+
+Codificación de contraseñas: si te piden Base64 UTF-16 (como en tus ejemplos previos), usa CryptoUtils.EncodeBase64Unicode("tuPass") para generar el valor a colocar en web.config.
+
+Probar localmente: antes del examen prueba con bases locales o con los scripts que te dieron (tablas e inserts) para validar consultas.
+
+¿Dónde pegar TransitSoft.Master y Consulta.aspx?
+
+Copia MainLayout.master (o TransitSoft.Master) en la carpeta raíz del proyecto Web (TransitSoftPresentacion).
+
+Asegúrate de que MasterPageFile en Consulta.aspx referencia correctamente (~/MainLayout.master).
+
+Manejo de errores: en el BO dejamos excepciones atrapadas por si una DB no responde; en examen esto te ayuda si una instancia falla.
+
+Si quieres ahora te doy (elige una):
+
+A. El zip con la estructura de proyectos lista (no puedo crear archivos aquí, pero puedo darte todos los archivos en orden para que los pegues).
+B. Te doy todos los archivos .cs y .aspx completos (uno por uno) en el orden para pegarlos en la solución.
+C. Te genero scripts para crear las tablas e insertar datos de prueba (si necesitas más casos de prueba).
+
+Dime cuál prefieres y lo entrego inmediatamente (opción B es la más rápida: te pego todo para copiar/pegar).
+
+Dijiste:
+Dame la B
+ChatGPT dijo:
+
+Perfecto ✅ — te daré la opción B, con todos los archivos .cs y .aspx completos, listos para copiar y pegar directamente en tu solución TransitSoftWA (WebForms .NET Framework).
+
+Cada sección incluye:
+
+La ruta exacta (carpeta/proyecto donde debes colocarlo).
+
+El código completo del archivo.
+
+Comentarios clave para que no tengas errores al compilar ni en el examen.
+
+🧩 1. Proyecto TransitSoftDominio
+📄 Vehiculo.cs
+// TransitSoftDominio/Vehiculo.cs
+using System;
+
+namespace TransitSoftDominio
+{
+    public class Vehiculo
+    {
+        public int Id { get; set; }
+        public string Placa { get; set; }
+        public string Marca { get; set; }
+        public string Modelo { get; set; }
+        public int Anho { get; set; }
+        public Propietario Propietario { get; set; }
+    }
+}
+
+📄 Propietario.cs
+// TransitSoftDominio/Propietario.cs
+using System;
+
+namespace TransitSoftDominio
+{
+    public class Propietario
+    {
+        public int Id { get; set; }
+        public string DNI { get; set; }
+        public string Nombres { get; set; }
+        public string Apellidos { get; set; }
+        public string Direccion { get; set; }
+    }
+}
+
+🧱 2. Proyecto TransitSoftDBManager
+📄 Util/CryptoUtils.cs
+// TransitSoftDBManager/Util/CryptoUtils.cs
+using System;
+using System.Text;
+
+namespace TransitSoftDBManager.Util
+{
+    public static class CryptoUtils
+    {
+        public static string DecodeBase64Unicode(string base64)
+        {
+            if (string.IsNullOrWhiteSpace(base64)) return string.Empty;
+            byte[] bytes = Convert.FromBase64String(base64.Trim());
+            return Encoding.Unicode.GetString(bytes);
+        }
+
+        public static string EncodeBase64Unicode(string plain)
+        {
+            byte[] bytes = Encoding.Unicode.GetBytes(plain ?? "");
+            return Convert.ToBase64String(bytes);
+        }
+    }
+}
+
+📄 IDBManager.cs
+// TransitSoftDBManager/IDBManager.cs
+using System.Data.Common;
+
+namespace TransitSoftDBManager
+{
+    public interface IDBManager
+    {
+        DbConnection GetConnection();
+    }
+}
+
+📄 Impl/DBManagerMySQL.cs
+// TransitSoftDBManager/Impl/DBManagerMySQL.cs
+using System;
+using System.Configuration;
+using System.Data.Common;
+using MySql.Data.MySqlClient;
+using TransitSoftDBManager.Util;
+
+namespace TransitSoftDBManager.Impl
+{
+    public class DBManagerMySQL : IDBManager
+    {
+        private readonly string connectionString;
+
+        public DBManagerMySQL()
+        {
+            string host = ConfigurationManager.AppSettings["mysql.host"];
+            string port = ConfigurationManager.AppSettings["mysql.port"];
+            string db = ConfigurationManager.AppSettings["mysql.database"];
+            string user = ConfigurationManager.AppSettings["mysql.user"];
+            string encPwd = ConfigurationManager.AppSettings["mysql.password"];
+
+            string pwd = CryptoUtils.DecodeBase64Unicode(encPwd);
+
+            var csb = new MySqlConnectionStringBuilder()
+            {
+                Server = host,
+                Port = UInt32.Parse(port ?? "3306"),
+                Database = db,
+                UserID = user,
+                Password = pwd,
+                SslMode = MySqlSslMode.None,
+            };
+
+            connectionString = csb.ConnectionString;
+        }
+
+        public DbConnection GetConnection()
+        {
+            return new MySqlConnection(connectionString);
+        }
+    }
+}
+
+📄 Impl/DBManagerMSSQL.cs
+// TransitSoftDBManager/Impl/DBManagerMSSQL.cs
+using System;
+using System.Configuration;
+using System.Data.Common;
+using System.Data.SqlClient;
+using TransitSoftDBManager.Util;
+
+namespace TransitSoftDBManager.Impl
+{
+    public class DBManagerMSSQL : IDBManager
+    {
+        private readonly string connectionString;
+
+        public DBManagerMSSQL()
+        {
+            string server = ConfigurationManager.AppSettings["mssql.server"];
+            string database = ConfigurationManager.AppSettings["mssql.database"];
+            string user = ConfigurationManager.AppSettings["mssql.user"];
+            string encPwd = ConfigurationManager.AppSettings["mssql.password"];
+
+            string pwd = CryptoUtils.DecodeBase64Unicode(encPwd);
+
+            var csb = new SqlConnectionStringBuilder()
+            {
+                DataSource = server,
+                InitialCatalog = database,
+                UserID = user,
+                Password = pwd,
+                IntegratedSecurity = false
+            };
+
+            connectionString = csb.ConnectionString;
+        }
+
+        public DbConnection GetConnection()
+        {
+            return new SqlConnection(connectionString);
+        }
+    }
+}
+
+📄 DBManagerFactory.cs
+// TransitSoftDBManager/DBManagerFactory.cs
+using System;
+
+namespace TransitSoftDBManager
+{
+    public static class DBManagerFactory
+    {
+        public static IDBManager Create(string engine)
+        {
+            if (string.Equals(engine, "mysql", StringComparison.OrdinalIgnoreCase))
+                return new Impl.DBManagerMySQL();
+            if (string.Equals(engine, "mssql", StringComparison.OrdinalIgnoreCase))
+                return new Impl.DBManagerMSSQL();
+            throw new ArgumentException("Motor desconocido: " + engine);
+        }
+    }
+}
+
+💾 3. Proyecto TransitSoftPersistencia
+📄 IVehiculoDAO.cs
+// TransitSoftPersistencia/IVehiculoDAO.cs
+using System.Collections.Generic;
+using TransitSoftDominio;
+
+namespace TransitSoftPersistencia
+{
+    public interface IVehiculoDAO
+    {
+        List<Vehiculo> BuscarPorPropietario(string dni, string nombres, string apellidos);
+    }
+}
+
+📄 VehiculoDAO.cs
+// TransitSoftPersistencia/VehiculoDAO.cs
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.Common;
+using TransitSoftDBManager;
+using TransitSoftDominio;
+
+namespace TransitSoftPersistencia
+{
+    public class VehiculoDAO : IVehiculoDAO
+    {
+        private readonly IDBManager dbManager;
+
+        public VehiculoDAO(IDBManager dbManager)
+        {
+            this.dbManager = dbManager ?? throw new ArgumentNullException(nameof(dbManager));
+        }
+
+        public List<Vehiculo> BuscarPorPropietario(string dni, string nombres, string apellidos)
+        {
+            var resultado = new List<Vehiculo>();
+
+            using (DbConnection conn = dbManager.GetConnection())
+            {
+                conn.Open();
+                using (DbCommand cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText =
+@"SELECT v.id, v.placa, v.marca, v.modelo, v.anho,
+        p.id AS propietario_id, p.dni, p.nombres, p.apellidos, p.direccion
+   FROM vehiculo v
+   JOIN vehiculo_propietario vp ON vp.id_vehiculo = v.id
+   JOIN propietario p ON p.id = vp.id_propietario
+  WHERE 1=1";
+
+                    if (!string.IsNullOrWhiteSpace(dni))
+                    {
+                        cmd.CommandText += " AND p.dni = @dni";
+                        var p = cmd.CreateParameter(); p.ParameterName = "@dni"; p.Value = dni; cmd.Parameters.Add(p);
+                    }
+                    if (!string.IsNullOrWhiteSpace(nombres))
+                    {
+                        cmd.CommandText += " AND p.nombres LIKE @nombres";
+                        var p = cmd.CreateParameter(); p.ParameterName = "@nombres"; p.Value = "%" + nombres + "%"; cmd.Parameters.Add(p);
+                    }
+                    if (!string.IsNullOrWhiteSpace(apellidos))
+                    {
+                        cmd.CommandText += " AND p.apellidos LIKE @apellidos";
+                        var p = cmd.CreateParameter(); p.ParameterName = "@apellidos"; p.Value = "%" + apellidos + "%"; cmd.Parameters.Add(p);
+                    }
+
+                    using (DbDataReader rdr = cmd.ExecuteReader())
+                    {
+                        while (rdr.Read())
+                        {
+                            var v = new Vehiculo()
+                            {
+                                Id = rdr.GetInt32(rdr.GetOrdinal("id")),
+                                Placa = rdr.GetString(rdr.GetOrdinal("placa")),
+                                Marca = rdr.IsDBNull(rdr.GetOrdinal("marca")) ? null : rdr.GetString(rdr.GetOrdinal("marca")),
+                                Modelo = rdr.IsDBNull(rdr.GetOrdinal("modelo")) ? null : rdr.GetString(rdr.GetOrdinal("modelo")),
+                                Anho = rdr.IsDBNull(rdr.GetOrdinal("anho")) ? 0 : rdr.GetInt32(rdr.GetOrdinal("anho")),
+                                Propietario = new Propietario()
+                                {
+                                    Id = rdr.GetInt32(rdr.GetOrdinal("propietario_id")),
+                                    DNI = rdr.IsDBNull(rdr.GetOrdinal("dni")) ? null : rdr.GetString(rdr.GetOrdinal("dni")),
+                                    Nombres = rdr.IsDBNull(rdr.GetOrdinal("nombres")) ? null : rdr.GetString(rdr.GetOrdinal("nombres")),
+                                    Apellidos = rdr.IsDBNull(rdr.GetOrdinal("apellidos")) ? null : rdr.GetString(rdr.GetOrdinal("apellidos")),
+                                    Direccion = rdr.IsDBNull(rdr.GetOrdinal("direccion")) ? null : rdr.GetString(rdr.GetOrdinal("direccion"))
+                                }
+                            };
+                            resultado.Add(v);
+                        }
+                    }
+                }
+            }
+
+            return resultado;
+        }
+    }
+}
+
+🧠 4. Proyecto TransitSoftNegocio
+📄 VehiculoBO.cs
+// TransitSoftNegocio/VehiculoBO.cs
+using System;
+using System.Collections.Generic;
+using TransitSoftDominio;
+using TransitSoftPersistencia;
+
+namespace TransitSoftNegocio
+{
+    public class VehiculoBO
+    {
+        private readonly IVehiculoDAO daoMysql;
+        private readonly IVehiculoDAO daoMssql;
+
+        public VehiculoBO(TransitSoftDBManager.IDBManager mysqlManager, TransitSoftDBManager.IDBManager mssqlManager)
+        {
+            this.daoMysql = new VehiculoDAO(mysqlManager);
+            this.daoMssql = new VehiculoDAO(mssqlManager);
+        }
+
+        public List<Vehiculo> BuscarCombinado(string dni, string nombres, string apellidos)
+        {
+            var resFinal = new List<Vehiculo>();
+            var mapa = new Dictionary<string, Vehiculo>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                foreach (var v in daoMysql.BuscarPorPropietario(dni, nombres, apellidos))
+                    if (!mapa.ContainsKey(v.Placa)) mapa[v.Placa] = v;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Error MySQL: " + ex.Message);
+            }
+
+            try
+            {
+                foreach (var v in daoMssql.BuscarPorPropietario(dni, nombres, apellidos))
+                    if (!mapa.ContainsKey(v.Placa)) mapa[v.Placa] = v;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("Error MSSQL: " + ex.Message);
+            }
+
+            resFinal.AddRange(mapa.Values);
+            return resFinal;
+        }
+    }
+}
+
+🌐 5. Proyecto TransitSoftPresentacion (WebForms)
+📄 Consulta.aspx
+<%@ Page Language="C#" AutoEventWireup="true" CodeBehind="Consulta.aspx.cs" Inherits="TransitSoftPresentacion.Consulta" %>
+
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head runat="server">
+    <title>Consulta de Vehículos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+</head>
+<body class="p-4">
+    <form id="form1" runat="server" class="container">
+        <h3>Consulta de Vehículos por Propietario</h3>
+
+        <div class="mb-3">
+            <label for="txtDNI" class="form-label">DNI:</label>
+            <asp:TextBox ID="txtDNI" runat="server" CssClass="form-control" />
+        </div>
+
+        <div class="mb-3">
+            <label for="txtNombres" class="form-label">Nombres:</label>
+            <asp:TextBox ID="txtNombres" runat="server" CssClass="form-control" />
+        </div>
+
+        <div class="mb-3">
+            <label for="txtApellidos" class="form-label">Apellidos:</label>
+            <asp:TextBox ID="txtApellidos" runat="server" CssClass="form-control" />
+        </div>
+
+        <asp:Button ID="btnBuscar" runat="server" Text="Buscar" CssClass="btn btn-primary" OnClick="btnBuscar_Click" />
+
+        <hr />
+
+        <asp:GridView ID="gvResultados" runat="server" AutoGenerateColumns="false" CssClass="table table-striped mt-3">
+            <Columns>
+                <asp:BoundField DataField="Placa" HeaderText="Placa" />
+                <asp:BoundField DataField="Marca" HeaderText="Marca" />
+                <asp:BoundField DataField="Modelo" HeaderText="Modelo" />
+                <asp:BoundField DataField="Anho" HeaderText="Año" />
+                <asp:BoundField DataField="Propietario.DNI" HeaderText="DNI" />
+                <asp:BoundField DataField="Propietario.Nombres" HeaderText="Nombres" />
+                <asp:BoundField DataField="Propietario.Apellidos" HeaderText="Apellidos" />
+            </Columns>
+        </asp:GridView>
+    </form>
+</body>
+</html>
+
+📄 Consulta.aspx.cs
+// TransitSoftPresentacion/Consulta.aspx.cs
+using System;
+using System.Web.UI;
+using TransitSoftDBManager;
+using TransitSoftNegocio;
+
+namespace TransitSoftPresentacion
+{
+    public partial class Consulta : Page
+    {
+        protected void Page_Load(object sender, EventArgs e)
+        {
+        }
+
+        protected void btnBuscar_Click(object sender, EventArgs e)
+        {
+            string dni = txtDNI.Text.Trim();
+            string nombres = txtNombres.Text.Trim();
+            string apellidos = txtApellidos.Text.Trim();
+
+            IDBManager mysqlManager = DBManagerFactory.Create("mysql");
+            IDBManager mssqlManager = DBManagerFactory.Create("mssql");
+
+            var bo = new VehiculoBO(mysqlManager, mssqlManager);
+            var resultados = bo.BuscarCombinado(dni, nombres, apellidos);
+
+            gvResultados.DataSource = resultados;
+            gvResultados.DataBind();
+        }
+    }
+}
+
+📄 web.config
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <appSettings>
+    <add key="mysql.host" value="labs-2025-2-prog3-mysql.cuz6a6q0ybnm.us-east-1.rds.amazonaws.com" />
+    <add key="mysql.port" value="3306" />
+    <add key="mysql.database" value="transitsoft" />
+    <add key="mysql.user" value="admin" />
+    <add key="mysql.password" value="UAByAG8AZwByAGEAbQBhAGMAaQBvAG4AMwE=" />
+
+    <add key="mssql.server" value="tu-servidor-sql" />
+    <add key="mssql.database" value="transitsoft" />
+    <add key="mssql.user" value="sa" />
+    <add key="mssql.password" value="UAByAG8AZwByAGEAbQBhAGMAaQBvAG4AMwE=" />
+  </appSettings>
+
+  <system.web>
+    <compilation debug="true" targetFramework="4.8" />
+    <httpRuntime targetFramework="4.8" />
+  </system.web>
+</configuration>
+
+
+¿Quieres que te dé también los scripts SQL para crear las tablas (vehiculo, propietario, vehiculo_propietario) e insertar datos de ejemplo en MySQL y MSSQL?
+Puedo darte ambos con compatibilidad directa.
