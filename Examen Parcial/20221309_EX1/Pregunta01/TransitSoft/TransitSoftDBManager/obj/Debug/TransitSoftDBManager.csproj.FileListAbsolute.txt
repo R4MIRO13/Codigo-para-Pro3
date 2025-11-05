@@ -1,6 +1,0 @@
-T:\20221309_EX1\Pregunta01\TransitSoft\TransitSoftDBManager\bin\Debug\TransitSoftDBManager.dll
-T:\20221309_EX1\Pregunta01\TransitSoft\TransitSoftDBManager\bin\Debug\TransitSoftDBManager.pdb
-T:\20221309_EX1\Pregunta01\TransitSoft\TransitSoftDBManager\obj\Debug\TransitSoftDBManager.csproj.AssemblyReference.cache
-T:\20221309_EX1\Pregunta01\TransitSoft\TransitSoftDBManager\obj\Debug\TransitSoftDBManager.csproj.CoreCompileInputs.cache
-T:\20221309_EX1\Pregunta01\TransitSoft\TransitSoftDBManager\obj\Debug\TransitSoftDBManager.dll
-T:\20221309_EX1\Pregunta01\TransitSoft\TransitSoftDBManager\obj\Debug\TransitSoftDBManager.pdb

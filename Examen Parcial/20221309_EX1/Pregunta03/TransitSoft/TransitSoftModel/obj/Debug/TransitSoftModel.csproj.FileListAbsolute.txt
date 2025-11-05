@@ -1,6 +1,0 @@
-T:\20221309_EX1\Pregunta03\TransitSoft\TransitSoftModel\bin\Debug\TransitSoftModel.dll
-T:\20221309_EX1\Pregunta03\TransitSoft\TransitSoftModel\bin\Debug\TransitSoftModel.pdb
-T:\20221309_EX1\Pregunta03\TransitSoft\TransitSoftModel\obj\Debug\TransitSoftModel.csproj.AssemblyReference.cache
-T:\20221309_EX1\Pregunta03\TransitSoft\TransitSoftModel\obj\Debug\TransitSoftModel.csproj.CoreCompileInputs.cache
-T:\20221309_EX1\Pregunta03\TransitSoft\TransitSoftModel\obj\Debug\TransitSoftModel.dll
-T:\20221309_EX1\Pregunta03\TransitSoft\TransitSoftModel\obj\Debug\TransitSoftModel.pdb
