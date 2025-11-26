@@ -1,0 +1,7 @@
+C:\Users\PC_Lima\OneDrive\LP2\2025-1\Laboratorio 14\GameSoft\GameSoftWA\bin\GameSoftWA.dll.config
+C:\Users\PC_Lima\OneDrive\LP2\2025-1\Laboratorio 14\GameSoft\GameSoftWA\bin\GameSoftWA.dll
+C:\Users\PC_Lima\OneDrive\LP2\2025-1\Laboratorio 14\GameSoft\GameSoftWA\bin\GameSoftWA.pdb
+C:\Users\PC_Lima\OneDrive\LP2\2025-1\Laboratorio 14\GameSoft\GameSoftWA\obj\Debug\GameSoftWA.csproj.AssemblyReference.cache
+C:\Users\PC_Lima\OneDrive\LP2\2025-1\Laboratorio 14\GameSoft\GameSoftWA\obj\Debug\GameSoftWA.csproj.CoreCompileInputs.cache
+C:\Users\PC_Lima\OneDrive\LP2\2025-1\Laboratorio 14\GameSoft\GameSoftWA\obj\Debug\GameSoftWA.dll
+C:\Users\PC_Lima\OneDrive\LP2\2025-1\Laboratorio 14\GameSoft\GameSoftWA\obj\Debug\GameSoftWA.pdb

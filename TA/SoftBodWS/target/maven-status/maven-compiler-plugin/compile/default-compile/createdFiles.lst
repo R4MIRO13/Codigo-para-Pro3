@@ -1,0 +1,16 @@
+pe\edu\pucp\softbod\services\softbodws\ClienteAlFiado.class
+pe\edu\pucp\softbod\fecha\FechaUtil.class
+pe\edu\pucp\softbod\services\softbodws\Devolucion.class
+pe\edu\pucp\softbod\services\softbodws\Producto.class
+pe\edu\pucp\softbod\services\softbodws\VentaAlFiado.class
+pe\edu\pucp\softbod\services\softbodws\resources\JakartaEE10Resource.class
+pe\edu\pucp\softbod\services\softbodws\DetalleVenta.class
+pe\edu\pucp\softbod\services\softbodws\RazonDevolucion.class
+pe\edu\pucp\softbod\services\softbodws\JakartaRestConfiguration.class
+pe\edu\pucp\softbod\reporte\util\ReporteUtil.class
+pe\edu\pucp\softbod\services\softbodws\DetalleDevolucion.class
+pe\edu\pucp\softbod\services\softbodws\Venta.class
+pe\edu\pucp\softbod\services\softbodws\HistorialOperaciones.class
+pe\edu\pucp\softbod\services\softbodws\RegistroPagoFiado.class
+pe\edu\pucp\softbod\services\softbodws\Usuario.class
+pe\edu\pucp\softbod\services\softbodws\Categoria.class

@@ -1,0 +1,16 @@
+pe\edu\pucp\softbod\model\gestclientes\ClienteAlFiadoDTO.class
+pe\edu\pucp\softbod\model\util\Tipo_Operacion.class
+pe\edu\pucp\softbod\model\almacen\ProductoDTO.class
+pe\edu\pucp\softbod\model\util\Tipo_Usuario.class
+pe\edu\pucp\softbod\model\trazabilidad\HistorialOperacionesDTO.class
+pe\edu\pucp\softbod\model\devolucion\RazonDevolucionDTO.class
+pe\edu\pucp\softbod\model\gestclientes\RegistroPagoFiadoDTO.class
+pe\edu\pucp\softbod\model\rrhh\UsuarioDTO.class
+pe\edu\pucp\softbod\model\util\Tipo_de_pago.class
+pe\edu\pucp\softbod\model\almacen\CategoriaDTO.class
+pe\edu\pucp\softbod\model\devolucion\DetalleDevolucionDTO.class
+pe\edu\pucp\softbod\model\ventas\VentaAlFiadoDTO.class
+pe\edu\pucp\softbod\model\ventas\DetalleVentaDTO.class
+pe\edu\pucp\softbod\model\ventas\VentaDTO.class
+pe\edu\pucp\softbod\model\util\Unidad_Medida.class
+pe\edu\pucp\softbod\model\devolucion\DevolucionDTO.class

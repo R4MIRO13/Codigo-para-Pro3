@@ -1,0 +1,16 @@
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\almacen\CategoriaDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\almacen\ProductoDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\devolucion\DetalleDevolucionDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\devolucion\DevolucionDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\devolucion\RazonDevolucionDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\gestclientes\ClienteAlFiadoDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\gestclientes\RegistroPagoFiadoDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\rrhh\UsuarioDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\trazabilidad\HistorialOperacionesDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\util\Tipo_de_pago.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\util\Tipo_Operacion.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\util\Tipo_Usuario.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\util\Unidad_Medida.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\ventas\DetalleVentaDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\ventas\VentaAlFiadoDTO.java
+D:\Documentos\GitHub\Proyecto_Progra03\SoftBodModel\src\main\java\pe\edu\pucp\softbod\model\ventas\VentaDTO.java

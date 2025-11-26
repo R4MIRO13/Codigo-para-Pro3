@@ -1,0 +1,14 @@
+pe\edu\pucp\softbod\bo\gestclientes\RegistroPagoFiadoBO.class
+pe\edu\pucp\softbod\bo\almacen\CategoriaBO.class
+pe\edu\pucp\softbod\bo\devolucion\DetalleDevolucionBO.class
+pe\edu\pucp\softbod\bo\rrhh\UsuarioBO.class
+pe\edu\pucp\softbod\bo\devolucion\RazonDevolucionBO.class
+pe\edu\pucp\softbod\bo\devolucion\DevolucionBO.class
+pe\edu\pucp\softbod\bo\util\OperacionBOBase.class
+pe\edu\pucp\softbod\bo\trazabilidad\HistorialDeOperacionBO.class
+pe\edu\pucp\softbod\bo\ventas\VentaAlFiadoBO.class
+pe\edu\pucp\softbod\bo\gestclientes\ClienteAlFiadoBO.class
+pe\edu\pucp\softbod\bo\ventas\DetalleVentaBO.class
+pe\edu\pucp\softbod\bo\rrhh\LoginBO.class
+pe\edu\pucp\softbod\bo\ventas\VentaBO.class
+pe\edu\pucp\softbod\bo\almacen\ProductoBO.class

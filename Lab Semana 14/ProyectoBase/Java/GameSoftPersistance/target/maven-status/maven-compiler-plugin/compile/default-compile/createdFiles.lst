@@ -1,0 +1,5 @@
+pe\edu\pucp\gamesoft\dao\ICrud.class
+pe\edu\pucp\gamesoft\dao\VideojuegoDAO.class
+pe\edu\pucp\gamesoft\mysql\GeneroImpl.class
+pe\edu\pucp\gamesoft\dao\GeneroDAO.class
+pe\edu\pucp\gamesoft\mysql\VideojuegoImpl.class
