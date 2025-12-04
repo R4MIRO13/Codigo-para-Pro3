@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: pe.edu.pucp.transitsoft.dao.PropietarioDAOTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 74.45 s -- in pe.edu.pucp.transitsoft.dao.PropietarioDAOTest
