@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<definitions xmlns:wsam="http://www.w3.org/2007/05/addressing/metadata" xmlns:wsp="http://www.w3.org/ns/ws-policy" xmlns:wsp1_2="http://schemas.xmlsoap.org/ws/2004/09/policy" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:tns="http://transitsoftws.services.transitsoft.pucp.edu.pe/" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" name="VehiculoPropietario" targetNamespace="http://transitsoftws.services.transitsoft.pucp.edu.pe/" xmlns="http://schemas.xmlsoap.org/wsdl/">
+  <types>
+    <xsd:schema>
+      <xsd:import schemaLocation="http://localhost:8080/TransitSoftWS/VehiculoPropietario?xsd=1" namespace="http://transitsoftws.services.transitsoft.pucp.edu.pe/" />
+    </xsd:schema>
+  </types>
+  <message name="listarRelaciones">
+    <part name="parameters" element="tns:listarRelaciones" />
+  </message>
+  <message name="listarRelacionesResponse">
+    <part name="parameters" element="tns:listarRelacionesResponse" />
+  </message>
+  <message name="obtenerRelacionPorId">
+    <part name="parameters" element="tns:obtenerRelacionPorId" />
+  </message>
+  <message name="obtenerRelacionPorIdResponse">
+    <part name="parameters" element="tns:obtenerRelacionPorIdResponse" />
+  </message>
+  <message name="modificarRelacion">
+    <part name="parameters" element="tns:modificarRelacion" />
+  </message>
+  <message name="modificarRelacionResponse">
+    <part name="parameters" element="tns:modificarRelacionResponse" />
+  </message>
+  <message name="eliminarRelacion">
+    <part name="parameters" element="tns:eliminarRelacion" />
+  </message>
+  <message name="eliminarRelacionResponse">
+    <part name="parameters" element="tns:eliminarRelacionResponse" />
+  </message>
+  <message name="insertarRelacion">
+    <part name="parameters" element="tns:insertarRelacion" />
+  </message>
+  <message name="insertarRelacionResponse">
+    <part name="parameters" element="tns:insertarRelacionResponse" />
+  </message>
+  <message name="listarVehiculosPorPropietario">
+    <part name="parameters" element="tns:listarVehiculosPorPropietario" />
+  </message>
+  <message name="listarVehiculosPorPropietarioResponse">
+    <part name="parameters" element="tns:listarVehiculosPorPropietarioResponse" />
+  </message>
+  <message name="listarPropietariosPorVehiculo">
+    <part name="parameters" element="tns:listarPropietariosPorVehiculo" />
+  </message>
+  <message name="listarPropietariosPorVehiculoResponse">
+    <part name="parameters" element="tns:listarPropietariosPorVehiculoResponse" />
+  </message>
+  <portType name="VehiculoPropietario">
+    <operation name="listarRelaciones">
+      <input wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/listarRelacionesRequest" message="tns:listarRelaciones" />
+      <output wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/listarRelacionesResponse" message="tns:listarRelacionesResponse" />
+    </operation>
+    <operation name="obtenerRelacionPorId">
+      <input wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/obtenerRelacionPorIdRequest" message="tns:obtenerRelacionPorId" />
+      <output wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/obtenerRelacionPorIdResponse" message="tns:obtenerRelacionPorIdResponse" />
+    </operation>
+    <operation name="modificarRelacion">
+      <input wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/modificarRelacionRequest" message="tns:modificarRelacion" />
+      <output wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/modificarRelacionResponse" message="tns:modificarRelacionResponse" />
+    </operation>
+    <operation name="eliminarRelacion">
+      <input wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/eliminarRelacionRequest" message="tns:eliminarRelacion" />
+      <output wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/eliminarRelacionResponse" message="tns:eliminarRelacionResponse" />
+    </operation>
+    <operation name="insertarRelacion">
+      <input wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/insertarRelacionRequest" message="tns:insertarRelacion" />
+      <output wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/insertarRelacionResponse" message="tns:insertarRelacionResponse" />
+    </operation>
+    <operation name="listarVehiculosPorPropietario">
+      <input wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/listarVehiculosPorPropietarioRequest" message="tns:listarVehiculosPorPropietario" />
+      <output wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/listarVehiculosPorPropietarioResponse" message="tns:listarVehiculosPorPropietarioResponse" />
+    </operation>
+    <operation name="listarPropietariosPorVehiculo">
+      <input wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/listarPropietariosPorVehiculoRequest" message="tns:listarPropietariosPorVehiculo" />
+      <output wsam:Action="http://transitsoftws.services.transitsoft.pucp.edu.pe/VehiculoPropietario/listarPropietariosPorVehiculoResponse" message="tns:listarPropietariosPorVehiculoResponse" />
+    </operation>
+  </portType>
+  <binding name="VehiculoPropietarioPortBinding" type="tns:VehiculoPropietario">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <operation name="listarRelaciones">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" />
+      </input>
+      <output>
+        <soap:body use="literal" />
+      </output>
+    </operation>
+    <operation name="obtenerRelacionPorId">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" />
+      </input>
+      <output>
+        <soap:body use="literal" />
+      </output>
+    </operation>
+    <operation name="modificarRelacion">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" />
+      </input>
+      <output>
+        <soap:body use="literal" />
+      </output>
+    </operation>
+    <operation name="eliminarRelacion">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" />
+      </input>
+      <output>
+        <soap:body use="literal" />
+      </output>
+    </operation>
+    <operation name="insertarRelacion">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" />
+      </input>
+      <output>
+        <soap:body use="literal" />
+      </output>
+    </operation>
+    <operation name="listarVehiculosPorPropietario">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" />
+      </input>
+      <output>
+        <soap:body use="literal" />
+      </output>
+    </operation>
+    <operation name="listarPropietariosPorVehiculo">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" />
+      </input>
+      <output>
+        <soap:body use="literal" />
+      </output>
+    </operation>
+  </binding>
+  <service name="VehiculoPropietario">
+    <port name="VehiculoPropietarioPort" binding="tns:VehiculoPropietarioPortBinding">
+      <soap:address location="http://localhost:8080/TransitSoftWS/VehiculoPropietario" />
+    </port>
+  </service>
+</definitions>

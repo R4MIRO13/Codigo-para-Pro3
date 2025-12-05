@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:tns="http://transitsoftws.services.transitsoft.pucp.edu.pe/" targetNamespace="http://transitsoftws.services.transitsoft.pucp.edu.pe/" version="1.0" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="eliminarRelacion" type="tns:eliminarRelacion" />
+  <xs:element name="eliminarRelacionResponse" type="tns:eliminarRelacionResponse" />
+  <xs:element name="insertarRelacion" type="tns:insertarRelacion" />
+  <xs:element name="insertarRelacionResponse" type="tns:insertarRelacionResponse" />
+  <xs:element name="listarPropietariosPorVehiculo" type="tns:listarPropietariosPorVehiculo" />
+  <xs:element name="listarPropietariosPorVehiculoResponse" type="tns:listarPropietariosPorVehiculoResponse" />
+  <xs:element name="listarRelaciones" type="tns:listarRelaciones" />
+  <xs:element name="listarRelacionesResponse" type="tns:listarRelacionesResponse" />
+  <xs:element name="listarVehiculosPorPropietario" type="tns:listarVehiculosPorPropietario" />
+  <xs:element name="listarVehiculosPorPropietarioResponse" type="tns:listarVehiculosPorPropietarioResponse" />
+  <xs:element name="modificarRelacion" type="tns:modificarRelacion" />
+  <xs:element name="modificarRelacionResponse" type="tns:modificarRelacionResponse" />
+  <xs:element name="obtenerRelacionPorId" type="tns:obtenerRelacionPorId" />
+  <xs:element name="obtenerRelacionPorIdResponse" type="tns:obtenerRelacionPorIdResponse" />
+  <xs:complexType name="eliminarRelacion">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="id" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="eliminarRelacionResponse">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="return" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="listarVehiculosPorPropietario">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="id_propietario" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="listarVehiculosPorPropietarioResponse">
+    <xs:sequence>
+      <xs:element minOccurs="0" maxOccurs="unbounded" name="return" type="tns:vehiculoDTO" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="vehiculoDTO">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="anho" type="xs:int" />
+      <xs:element minOccurs="0" name="id" type="xs:int" />
+      <xs:element minOccurs="0" name="marca" type="xs:string" />
+      <xs:element minOccurs="0" name="modelo" type="xs:string" />
+      <xs:element minOccurs="0" name="placa" type="xs:string" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="listarRelaciones">
+    <xs:sequence />
+  </xs:complexType>
+  <xs:complexType name="listarRelacionesResponse">
+    <xs:sequence>
+      <xs:element minOccurs="0" maxOccurs="unbounded" name="return" type="tns:vehiculoPropietarioDTO" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="vehiculoPropietarioDTO">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="id" type="xs:int" />
+      <xs:element minOccurs="0" name="id_propietario" type="xs:int" />
+      <xs:element minOccurs="0" name="id_vehiculo" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="insertarRelacion">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="id_vehiculo" type="xs:int" />
+      <xs:element minOccurs="0" name="id_propietario" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="insertarRelacionResponse">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="return" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="obtenerRelacionPorId">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="id" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="obtenerRelacionPorIdResponse">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="return" type="tns:vehiculoPropietarioDTO" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="listarPropietariosPorVehiculo">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="id_vehiculo" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="listarPropietariosPorVehiculoResponse">
+    <xs:sequence>
+      <xs:element minOccurs="0" maxOccurs="unbounded" name="return" type="tns:propietarioDTO" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="propietarioDTO">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="apellidos" type="xs:string" />
+      <xs:element minOccurs="0" name="direccion" type="xs:string" />
+      <xs:element minOccurs="0" name="dni" type="xs:int" />
+      <xs:element minOccurs="0" name="id" type="xs:int" />
+      <xs:element minOccurs="0" name="nombres" type="xs:string" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="modificarRelacion">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="id" type="xs:int" />
+      <xs:element minOccurs="0" name="id_vehiculo" type="xs:int" />
+      <xs:element minOccurs="0" name="id_propietario" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="modificarRelacionResponse">
+    <xs:sequence>
+      <xs:element minOccurs="0" name="return" type="xs:int" />
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

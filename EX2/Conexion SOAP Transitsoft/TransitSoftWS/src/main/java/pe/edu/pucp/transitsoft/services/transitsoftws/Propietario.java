@@ -18,7 +18,7 @@ public class Propietario {
     }
     
     @WebMethod(operationName = "insertarPropietario")
-    public Integer insertarPropietario(@WebParam(name = "dni") Integer dni,
+    public Integer insertarPropietario(@WebParam(name = "dni") String dni,
             @WebParam(name = "nombres") String nombres, 
             @WebParam(name = "apellidos") String apellidos,
             @WebParam(name = "direccion") String direccion) {
@@ -27,7 +27,7 @@ public class Propietario {
 
     @WebMethod(operationName = "modificarPropietario")
     public Integer modificarPropietario(@WebParam(name = "id") Integer id,
-            @WebParam(name = "dni") Integer dni,
+            @WebParam(name = "dni") String dni,
             @WebParam(name = "nombres") String nombres, 
             @WebParam(name = "apellidos") String apellidos,
             @WebParam(name = "direccion") String direccion) {

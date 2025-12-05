@@ -1,0 +1,19 @@
+﻿<%@ Master Language="C#" AutoEventWireup="true" CodeBehind="TransitSoft.Master.cs" Inherits="TransitSoftWA.TransitSoft" %>
+
+<!DOCTYPE html>
+<html>
+<head runat="server">
+    <title>TransitSoft</title>
+</head>
+<body>
+    <form runat="server">
+        <div style="background:#003366;color:white;padding:12px;">
+            <h2>TransitSoft</h2>
+            <a href="Default.aspx" style="color:white;margin-right:15px;">Inicio</a>
+            <a href="VehiculosPorPropietario.aspx" style="color:white;">Vehículos por Propietario</a>
+        </div>
+
+        <asp:ContentPlaceHolder ID="MainContent" runat="server"></asp:ContentPlaceHolder>
+    </form>
+</body>
+</html>

@@ -8,3 +8,12 @@
 /EX2/Conexion SOAP Transitsoft/TransitSoftPersistance/target/
 /EX2/Conexion SOAP Transitsoft/TransitSoftBusiness/target/
 /EX2/Conexion SOAP Transitsoft/TransitSoftWS/target/
+/EX2/Conexion RESTful Transitsoft/ServidorRESTFul/TransitSoftDBManager/target/
+/EX2/Conexion RESTful Transitsoft/ServidorRESTFul/TransitSoftModel/target/
+/EX2/Conexion RESTful Transitsoft/ServidorRESTFul/TransitSoftPersistance/target/
+/EX2/Conexion RESTful Transitsoft/ServidorRESTFul/TransitSoftBusiness/target/
+/EX2/Conexion RESTful Transitsoft/ServidorRESTFul/TransitSoftWS/target/
+/EX2/Conexion RESTful Transitsoft/ServidorRESTFul/TransitSoftBusinessServidorWS/target/
+/EX2/Conexion RESTful Transitsoft/ClienteRESTFul/TransitSoftBusiness/target/
+/EX2/Conexion RESTful Transitsoft/ClienteRESTFul/TransitSoftWS/target/
+/EX2/Conexion RESTful Transitsoft/ClienteRESTFul/TransitSoftBusinessClienteWS/target/

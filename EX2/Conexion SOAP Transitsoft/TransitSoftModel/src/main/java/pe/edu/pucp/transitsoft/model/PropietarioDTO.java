@@ -2,7 +2,7 @@ package pe.edu.pucp.transitsoft.model;
 
 public class PropietarioDTO {
     private Integer id;
-    private Integer dni;
+    private String dni;
     private String nombres;
     private String apellidos;
     private String direccion;
@@ -31,11 +31,11 @@ public class PropietarioDTO {
         this.id = id;
     }
 
-    public Integer getDni() {
+    public String getDni() {
         return dni;
     }
 
-    public void setDni(Integer dni) {
+    public void setDni(String dni) {
         this.dni = dni;
     }
 

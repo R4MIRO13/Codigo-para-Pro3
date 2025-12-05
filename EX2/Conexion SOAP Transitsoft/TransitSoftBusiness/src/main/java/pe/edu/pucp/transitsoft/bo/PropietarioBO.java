@@ -13,7 +13,7 @@ public class PropietarioBO {
         this.propietarioDAO = new PropietarioDAOImpl();
     }
     
-    public Integer insertar(Integer dni, String nombres, String apellidos, String direccion){
+    public Integer insertar(String dni, String nombres, String apellidos, String direccion){
         PropietarioDTO propietarioDTO = new PropietarioDTO();
         propietarioDTO.setDni(dni);
         propietarioDTO.setNombres(nombres);
@@ -30,7 +30,7 @@ public class PropietarioBO {
         return this.propietarioDAO.listarTodos();
     }
     
-    public Integer modificar(Integer id, Integer dni, String nombres, String apellidos, String direccion){
+    public Integer modificar(Integer id, String dni, String nombres, String apellidos, String direccion){
         PropietarioDTO propietarioDTO = new PropietarioDTO();
         propietarioDTO.setId(id);
         propietarioDTO.setDni(dni);
